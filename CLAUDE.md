@@ -38,3 +38,4 @@ Done: phases 1-2, plan view (Mifflin-St Jeor x1.2 + manual adjustment + weekly g
 - Exercise tab now has Planned (H) and Estimate (added by gUpdate_). Read via generic `read` (last 30 days), written via generic `update` after `addExercise`. Blank Planned = planned if date > today or Source 'Lose It! plan'.
 - Planned burn counts toward Left like planned food (Days formula unchanged).
 - Settings tab (view 'prefs', ⚙️) replaced the Sync nav button: Sync card, Meal sections, Extras, About. Plan (view 'settings') keeps plan, progress, level, badges.
+- Removed the + nav button 2026-11-21 (Josh may revisit as a quick-add: Food by time of day / Scan / Exercise, for today). The 'add' act handler is still in app.js.

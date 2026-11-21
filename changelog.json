@@ -2,7 +2,7 @@
  "entries": [
   {
    "date": "2026-11-21",
-   "version": "20261121113032",
+   "version": "20261121113501",
    "items": [
     "What's new: this list, opened from the bottom of Settings, with a green dot when there's something you haven't read",
     "App version now shows right away on a fresh install instead of \"?\"",
@@ -11,7 +11,8 @@
     "Plan exercise ahead: it shows with a clock and counts toward today's Left, just like planned food; tap ✓ when you've done it",
     "Minutes and calories boxes no longer run off the edge on the phone",
     "The ✓ on food and exercise is a grey circle while planned and turns solid green when done; tap a green one to move it back to planned",
-    "New Settings tab (⚙️) replaces the Sync button: Sync now is at the top, then meal sections, water and About. Plan keeps your calorie plan, progress, level and badges"
+    "New Settings tab (⚙️) replaces the Sync button: Sync now is at the top, then meal sections, water and About. Plan keeps your calorie plan, progress, level and badges",
+    "Removed the big + from the bottom bar; add food and exercise from their sections on the Day screen"
    ]
   },
   {

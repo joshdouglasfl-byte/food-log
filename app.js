@@ -368,7 +368,7 @@
   }
   function nav() {
     const b = (v, i, t) => `<button class="${state.view === v ? 'on' : ''}" data-view="${v}"><span class="i">${i}</span>${t}</button>`;
-    return `<nav class="tabs">${b('day', '📅', 'Day')}${b('week', '📊', 'Week')}<button class="plus" data-act="add">+</button>${b('settings', '🎯', 'Plan')}${b('prefs', newsUnread() ? '⚙️<i class="news-dot tab-dot"></i>' : '⚙️', 'Settings')}</nav>`;
+    return `<nav class="tabs">${b('day', '📅', 'Day')}${b('week', '📊', 'Week')}${b('settings', '🎯', 'Plan')}${b('prefs', newsUnread() ? '⚙️<i class="news-dot tab-dot"></i>' : '⚙️', 'Settings')}</nav>`;
   }
 
   function dayView() {
