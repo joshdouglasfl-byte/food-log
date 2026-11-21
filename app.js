@@ -634,7 +634,6 @@
       <section class="card"><h2>Meal sections</h2>${ALL_SLOTS.map(s => `<div class="toggle-row"><span>${s}</span><button class="switch ${vs.includes(s) ? 'on' : ''}" data-slot="${s}"></button></div>`).join('')}</section>
       <section class="card"><h2>Extras</h2><div class="toggle-row"><span>Track water</span><button class="switch ${waterOn() ? 'on' : ''}" data-act="water"></button></div></section>
       ${watchCard()}
-      ${PERSON === 'Josh' ? `<section class="card"><h2>👩 Michelle's setup link</h2><div class="sub" style="text-align:left;margin:0 0 10px">Open it on her phone or iPad, then Share › Add to Home Screen.</div><button class="btn big" data-act="sharemichelle">Share Michelle's link</button></section>` : ''}
       <section class="card"><h2>About</h2><div class="sub" style="margin:0">App version ${esc(load('version', '?'))} · Data: Food_Log sheet · ${state.data.foods.length.toLocaleString()} foods</div><button class="news-line" data-act="news">What's new${newsUnread() ? '<i class="news-dot" aria-label="unread"></i>' : ''}<span>›</span></button></section>`;
   }
 
@@ -647,11 +646,6 @@
       <div class="sub" style="text-align:left;margin:0 0 10px">Last watch workout received: ${last ? `${esc(dayLabel(last.date))}, ${esc(last.name)}, ${fmt(last.cal)} cal` : 'none yet'}</div>
       <div class="sub" style="text-align:left;margin:0 0 10px">For Health Auto Export: copy this and paste it as the URL of its REST API automation. It's ${esc(PERSON)}'s own link.</div>
       <div class="watch-copy"><button class="btn" data-act="copyhae">Copy Health Auto Export URL</button></div></section>`;
-  }
-  async function shareMichelle() {
-    const link = new URL('../michelle/', location.href).href + '?k=' + encodeURIComponent(load('key', ''));
-    try { if (navigator.share) { await navigator.share({ title: 'Food Log for Michelle', url: link }); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
-    copyText(link, "Michelle's link");
   }
   async function copyText(t, label) {
     try { await navigator.clipboard.writeText(t); toast(`${label} copied`); }
@@ -956,33 +950,94 @@
   }
 
   // ---------- barcode ----------
+  // zxing-wasm (zxing-cpp in WebAssembly) reads frames from a 1080p stream with autofocus and ~2x zoom;
+  // "Take a photo" reads a full-resolution still from the iPhone camera when live scanning struggles.
+  const BC_OPTS = { formats: ['EAN13', 'EAN8', 'UPCA', 'UPCE'], tryHarder: true, maxNumberOfSymbols: 1 };
   function scanSheet(m) {
     return head('Scan a barcode', true) + `<div class="sheet-body">
-      <video id="scanvid" playsinline muted style="width:100%;border-radius:14px;background:#000;max-height:46vh;object-fit:cover"></video>
-      <div class="sub" id="scanmsg" style="margin-top:8px">${esc(m.msg || 'Point the camera at the barcode')}</div>
+      <div class="scanbox"><video id="scanvid" playsinline muted autoplay></video><div class="scanguide"></div></div>
+      <div class="sub" id="scanmsg" style="margin-top:8px">${esc(m.msg || 'Starting camera…')}</div>
+      <label class="btn big ghost scanphoto">📸 Take a photo instead<input id="bcphoto" type="file" accept="image/*" capture="environment" hidden></label>
       <div class="field"><label>Or type the barcode</label><div class="qty-row"><input id="bcin" inputmode="numeric" autocomplete="off"><button class="btn" data-m="bcgo">Look up</button></div></div></div>`;
   }
   let scanCtl = null;
-  function stopScan() { try { scanCtl && scanCtl.stop(); } catch (e) {} scanCtl = null; }
-  function loadZxing() {
-    if (window.ZXingBrowser) return Promise.resolve();
-    return new Promise((ok, bad) => { const sc = document.createElement('script');
-      sc.src = 'https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/zxing-browser.min.js'; sc.onload = ok; sc.onerror = bad; document.head.appendChild(sc); });
+  function stopScan() {
+    if (!scanCtl) return;
+    scanCtl.on = false; clearTimeout(scanCtl.timer); clearTimeout(scanCtl.hint);
+    try { scanCtl.stream && scanCtl.stream.getTracks().forEach(t => t.stop()); } catch (e) {}
+    scanCtl = null;
   }
+  let zxP = null;
+  function loadZxing() {
+    if (window.ZXingWASM) return Promise.resolve(window.ZXingWASM);
+    return zxP = zxP || new Promise((ok, bad) => { const sc = document.createElement('script');
+      sc.src = 'https://cdn.jsdelivr.net/npm/zxing-wasm@3.1.7/dist/iife/reader/index.js';
+      sc.onload = () => ok(window.ZXingWASM); sc.onerror = () => { zxP = null; bad(new Error('scanner did not load')); }; document.head.appendChild(sc); });
+  }
+  const bcText = rs => { const r = (rs || []).find(x => x && x.text && x.isValid !== false); return r ? r.text : ''; };
   async function startScan() {
     const msg = t => { const e = $('#scanmsg'); if (e) e.textContent = t; };
+    stopScan();
+    const ctl = scanCtl = { on: true };
+    bindPhotoScan();
+    let zx;
+    try { zx = await loadZxing(); } catch (e) { msg('Scanner didn\'t load. Check the connection, or type the barcode below.'); return; }
+    let stream;
     try {
-      await loadZxing();
-      const reader = new ZXingBrowser.BrowserMultiFormatReader();
-      scanCtl = await reader.decodeFromConstraints({ video: { facingMode: 'environment' } }, $('#scanvid'), (res) => {
-        if (res && state.modal && state.modal.type === 'scan') { stopScan(); lookupBarcode(res.getText()); }
-      });
-    } catch (e) { msg('Camera unavailable. Type the barcode below.'); }
+      stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
+    } catch (e) { msg('Camera unavailable. Use Take a photo, or type the barcode below.'); return; }
+    if (!ctl.on) { stream.getTracks().forEach(t => t.stop()); return; }
+    ctl.stream = stream;
+    const track = stream.getVideoTracks()[0];
+    try {   // continuous autofocus and a little zoom, where the phone supports them
+      const cap = track.getCapabilities ? track.getCapabilities() : {}, adv = {};
+      if (cap.focusMode && cap.focusMode.includes('continuous')) adv.focusMode = 'continuous';
+      if (cap.zoom && cap.zoom.max >= 1.5) adv.zoom = Math.min(cap.zoom.max, 2);
+      if (Object.keys(adv).length) await track.applyConstraints({ advanced: [adv] });
+    } catch (e) {}
+    const v = $('#scanvid'); if (!v) return stopScan();
+    v.srcObject = stream; try { await v.play(); } catch (e) {}
+    msg('Hold the barcode inside the box, about 6 inches away');
+    ctl.hint = setTimeout(() => { if (ctl.on) msg('Having trouble? Tap Take a photo instead.'); }, 9000);
+    const cv = document.createElement('canvas'), cx = cv.getContext('2d', { willReadFrequently: true });
+    let n = 0;
+    const tick = async () => {
+      if (!ctl.on) return;
+      const vw = v.videoWidth, vh = v.videoHeight;
+      if (vw && vh) {
+        // alternate between the guide-box area and the whole frame
+        const full = n++ % 3 === 2, sw = full ? vw : Math.round(vw * 0.8), sh = full ? vh : Math.round(vh * 0.5);
+        const sx = Math.round((vw - sw) / 2), sy = Math.round((vh - sh) / 2), k = Math.min(1, 1280 / sw);
+        cv.width = Math.round(sw * k); cv.height = Math.round(sh * k);
+        cx.drawImage(v, sx, sy, sw, sh, 0, 0, cv.width, cv.height);
+        try {
+          const code = bcText(await zx.readBarcodes(cx.getImageData(0, 0, cv.width, cv.height), BC_OPTS));
+          if (code && ctl.on && state.modal && state.modal.type === 'scan') { if (navigator.vibrate) navigator.vibrate(60); stopScan(); return lookupBarcode(code); }
+        } catch (e) {}
+      }
+      if (ctl.on) ctl.timer = setTimeout(tick, 120);
+    };
+    tick();
+  }
+  function bindPhotoScan() {
+    const inp = $('#bcphoto'); if (!inp) return;
+    inp.onchange = async () => {
+      const f = inp.files && inp.files[0]; if (!f) return;
+      const e = $('#scanmsg'); if (e) e.textContent = 'Reading the photo…';
+      try {
+        const zx = await loadZxing();
+        const code = bcText(await zx.readBarcodes(f, BC_OPTS));
+        inp.value = '';
+        if (code) { stopScan(); return lookupBarcode(code); }
+        if (e) e.textContent = 'Couldn\'t find a barcode in that photo. Fill the frame with the barcode, keep it sharp, and try again.';
+      } catch (err) { if (e) e.textContent = 'Couldn\'t read the photo. Type the barcode below.'; }
+    };
   }
   async function lookupBarcode(code) {
     code = String(code || '').replace(/\D/g, ''); if (!code) return toast('Enter a barcode');
     const m = state.modal, slot = (m.back && m.back.slot) || defaultSlot();
-    const known = state.data.foods.find(f => String(f.barcode || '') === code);
+    const bcKey = c => String(c || '').replace(/\D/g, '').replace(/^0+/, '');   // UPC-A 012345678905 = EAN-13 0012345678905
+    const known = state.data.foods.find(f => f.barcode && bcKey(f.barcode) === bcKey(code));
     const open = f => { stopScan(); const sv = servingsFor(f)[0]; state.modal = { type: 'food', food: f.id, qty: sv ? 1 : (f.defQty || f.per), unit: sv ? sv.unit : canonUnit(f.unit), slot, back: m.back }; renderModal(); };
     if (known) return open(known);
     const e = $('#scanmsg'); if (e) e.textContent = 'Looking up ' + code + '…';
@@ -1139,7 +1194,6 @@
     else if (a === 'news') return openNews();
     else if (a === 'coachnotes') return openModal({ type: 'coach' });
     else if (a === 'copyhae') return copyText(haeUrl(), 'Health Auto Export URL');
-    else if (a === 'sharemichelle') return shareMichelle();
     else if (a === 'refresh') { toast('Syncing…'); return refresh(); }
     else if (a === 'done') {
       setDayFlag({ done: true });

@@ -54,5 +54,11 @@ Done: phases 1-2, plan view (Mifflin-St Jeor x1.2 + manual adjustment + weekly g
 ## Coach notes (2026-11-21)
 - Coach Notes tab (Date, Time, Person, From, Message, Status New/Read, EntryID): dietitian messages, read via generic `read` after load (`loadCoach`), shown as a "From your dietitian" card at the top of today (unread only, last 3) with Got it (queued generic `update` Status = Read) and Reply (Tell my dietitian). "📬 Coach notes" link under the tell buttons lists them all.
 - Michelle's dietitian (michelle-dietitian skill) and trainer run in Josh's Claude for now; nightly tasks reply through Coach Notes. Her goals come from her reply to Josh's starter email ("Your dietitian and trainer"); the CNGOAL note marks that step done.
-- Settings > Michelle's setup link (Josh only): shares `michelle/?k=<key>`.
+- Michelle's setup link button removed 2026-11-21 (her devices are set up); a new device uses `michelle/?k=<key>`.
 - Restaurant foods: 102 of 109 are already per Serving/Each/Piece, so no extra Servings rows needed.
+
+## Barcode scanner v2 (2026-11-21)
+- zxing-wasm 3.1.7 IIFE reader from jsdelivr (`ZXingWASM.readBarcodes`, formats EAN13/EAN8/UPCA/UPCE, tryHarder); its wasm loads from fastly.jsdelivr.net. Replaced @zxing/browser, which missed many codes on iPhone (640x480 stream).
+- Live: getUserMedia 1920x1080 ideal, continuous focus and up to 2x zoom where supported; reads every ~120 ms, alternating the guide-box area (80% x 50%) and the full frame, downscaled to 1280 wide. "Take a photo instead" (`input capture=environment`) decodes a full-res still. Hint after 9 s.
+- Saved-food barcode match ignores leading zeros (UPC-A vs EAN-13).
+- Tested with Chrome's fake camera fed a blurred, rotated UPC-A (y4m) and a photo file, API and CDN stubbed.
