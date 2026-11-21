@@ -497,27 +497,31 @@
     const f = d => parse(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: n >= 365 || parse(d).getFullYear() !== parse(t).getFullYear() ? 'numeric' : undefined });
     return { from, to, label: off === 0 ? `Last ${({ 7: 'week', 30: 'month', 90: 'quarter', 365: 'year' })[n]}` : `${f(from)} – ${f(to)}` };
   }
+  const PROG_KEYS = { fat: { goal: 'Fat mass goal (lb)', date: 'Goal date' }, weight: { goal: 'Weight goal (lb)', date: 'Weight goal date' } };
   function progressCard() {
     const p = profile();
-    const goal = Number(p['Fat mass goal (lb)']) || null;
-    const gdate = String(p['Goal date'] || '').slice(0, 10) || null;
+    // Weight or Fat mass, each with its own goal and target date (Profiles columns), last choice remembered
+    const metric = load('progMetric', 'fat'), useFat = metric === 'fat', K = PROG_KEYS[metric];
+    const goal = Number(p[K.goal]) || null;
+    const gdate = String(p[K.date] || '').slice(0, 10) || null;
     const all = (state.data.bodyAll || state.data.body || []).filter(b => b.weight);
+    const label = useFat ? 'Fat mass' : 'Weight';
     const editor = `<div class="qty-row" style="margin-top:12px">
-        <div class="field" style="flex:1"><label>Fat mass goal (lb)</label><input id="fgoal" type="number" inputmode="decimal" step="0.5" value="${goal ?? ''}" placeholder="e.g. 40"></div>
+        <div class="field" style="flex:1"><label>${label} goal (lb)</label><input id="fgoal" type="number" inputmode="decimal" step="0.5" value="${goal ?? ''}" placeholder="e.g. ${useFat ? 40 : 200}"></div>
         <div class="field" style="flex:1"><label>Target date</label><input id="fdate" type="date" value="${gdate ?? ''}"></div></div>`;
-    const seg = `<div class="seg">${RANGES.map(([k, n]) => `<button class="${(state.progRange || '90') === k ? 'on' : ''}" data-prange="${k}">${n}</button>`).join('')}</div>`;
+    const mseg = `<div class="seg">${[['weight', 'Weight'], ['fat', 'Fat mass']].map(([k, n]) => `<button class="${metric === k ? 'on' : ''}" data-pmetric="${k}">${n}</button>`).join('')}</div>`;
+    const seg = mseg + `<div class="seg">${RANGES.map(([k, n]) => `<button class="${(state.progRange || '90') === k ? 'on' : ''}" data-prange="${k}">${n}</button>`).join('')}</div>`;
     const win = progWindow(), t = today(), isNow = (state.progOff || 0) === 0;
     const nav = `<div class="prog-nav"><button class="icon-btn" data-poff="-1">‹</button><span>${esc(win.label)}</span><button class="icon-btn" data-poff="1" ${isNow ? 'disabled' : ''}>›</button></div>`;
     if (all.length < 3) return `<section class="card"><h2>Progress</h2>${seg}<div class="empty">Not enough weigh-ins yet.</div>${editor}</section>`;
     const fatAll = all.filter(b => b.fatLb);
-    const useFat = fatAll.length >= 3;
+    if (useFat && fatAll.length < 3) return `<section class="card"><h2>Progress</h2>${seg}<div class="empty">Not enough body-fat readings yet.</div>${editor}</section>`;
     const series = (useFat ? fatAll : all).map(b => ({ d: b.date, v: useFat ? b.fatLb : b.weight }));
     // rolling average of the last 7 readings, over the full history so window edges are smooth
     const avgAll = series.map((x, i) => { const w = series.slice(Math.max(0, i - 6), i + 1); return { d: x.d, v: w.reduce((a, b) => a + b.v, 0) / w.length }; });
     const pts = series.filter(x => x.d >= win.from && x.d <= win.to);
     const avg = avgAll.filter(x => x.d >= win.from && x.d <= win.to);
     const f1 = v => (Math.round(v * 10) / 10).toFixed(1);
-    const label = useFat ? 'Fat mass' : 'Weight';
     const fmtD = d => parse(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
     if (pts.length < 2) return `<section class="card"><h2>Progress</h2>${seg}${nav}<div class="empty">Fewer than two weigh-ins in this period.</div>${editor}</section>`;
     const cur = avgAll[avgAll.length - 1].v;
@@ -564,8 +568,8 @@
            ${pace != null ? `Last 4 weeks: <b>${f1(-pace)} lb/week</b> ${pace <= 0 ? 'down' : 'up'}${proj ? `, goal around <b>${esc(fmtD(proj))}</b>` : ''}. ${status}` : ''}`
         : ` Now <b>${f1(cur)} lb</b>. Set a goal below to track pace.`;
     }
-    const lastW = all[all.length - 1].weight;
-    return `<section class="card"><h2>Progress<small>weight ${lastW} lb</small></h2>${seg}${nav}${svg}
+    const lastV = useFat ? f1(fatAll[fatAll.length - 1].fatLb) : all[all.length - 1].weight;
+    return `<section class="card"><h2>Progress<small>last ${label.toLowerCase()} ${lastV} lb</small></h2>${seg}${nav}${svg}
       <div class="plan-legend"><span><i class="avg"></i>${label} (avg)</span>${showGoal ? '<span><i class="need"></i>Needed</span><span><i class="pace"></i>Your pace</span>' : ''}</div>
       <p class="plan-txt" style="margin-top:10px">${txt}</p>${editor}</section>`;
   }
@@ -975,8 +979,10 @@
     const gs = $('#goalsel'); if (gs) gs.onchange = () => savePlan({ 'Weekly goal (lb/week)': Number(gs.value) });
     document.querySelectorAll('[data-prange]').forEach(b => b.onclick = () => { state.progRange = b.dataset.prange; state.progOff = 0; render(); });
     document.querySelectorAll('[data-poff]').forEach(b => b.onclick = () => { state.progOff = Math.min(0, (state.progOff || 0) + Number(b.dataset.poff)); render(); });
-    const fg = $('#fgoal'); if (fg) fg.onchange = () => savePlan({ 'Fat mass goal (lb)': fg.value === '' ? '' : Number(fg.value) });
-    const fd = $('#fdate'); if (fd) fd.onchange = () => savePlan({ 'Goal date': fd.value });
+    const PK = () => PROG_KEYS[load('progMetric', 'fat')];
+    const fg = $('#fgoal'); if (fg) fg.onchange = () => savePlan({ [PK().goal]: fg.value === '' ? '' : Number(fg.value) });
+    const fd = $('#fdate'); if (fd) fd.onchange = () => savePlan({ [PK().date]: fd.value });
+    document.querySelectorAll('[data-pmetric]').forEach(b => b.onclick = () => { save('progMetric', b.dataset.pmetric); render(); });
     document.querySelectorAll('[data-m-open=sched]').forEach(b => b.onclick = () => { const sc = schedule(profile()); openModal({ type: 'sched', high: [...sc.high], extra: sc.extra || 150 }); });
     const ms = $('#mansel'); if (ms) ms.onchange = () => savePlan({ 'Manual adjustment (cal)': Number(ms.value) });
     const wk = $('#wkndsel'); if (wk) wk.onchange = () => { const v = Number(wk.value); savePlan({ 'Weekend adjustment (cal)': v, 'Weekday adjustment (cal)': -Math.round(v * 2 / 5) }); };
