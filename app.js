@@ -386,7 +386,7 @@
       h += `<section class="card"><h2>${slot}<small>${items.length ? fmt(tot) + ' cal' : ''}</small></h2>
         ${items.map(l => `<div class="entry ${isPlanned(l) ? 'planned' : ''}" role="button" data-entry="${esc(l.id || '')}" data-ekey="${esc(entryKey(l))}">
           <div class="nm"><div>${isPlanned(l) ? '🕒 ' : ''}${esc(l.name)}${l.est ? '<span class="est">EST</span>' : ''}</div><small>${esc(qtyText(l))}${isPlanned(l) ? ' · planned' : ''}</small></div><div class="cal">${fmt(l.cal)}</div>
-          ${isPlanned(l) && state.date <= today() ? `<button class="ate-btn" data-ate="${esc(entryKey(l))}" aria-label="Ate it">✓</button>` : ''}</div>`).join('')}
+          ${state.date <= today() && (isPlanned(l) || l.id) ? `<button class="ate-btn ${isPlanned(l) ? '' : 'on'}" data-ate="${esc(entryKey(l))}" aria-label="${isPlanned(l) ? 'Ate it' : 'Eaten, tap to move back to planned'}">✓</button>` : ''}</div>`).join('')}
         ${state.date <= today() && items.filter(isPlanned).length > 1 ? `<button class="add-line" data-confirm="${slot}">✓ Ate all ${items.filter(isPlanned).length} planned items</button>` : ''}
         <div class="meal-actions"><button class="add-line" data-addslot="${slot}">+ Add food</button>${items.length > 1 ? `<button class="link-btn" data-savemeal="${slot}">⭐ Save as meal</button>` : ''}</div></section>`;
     }
@@ -396,7 +396,7 @@
     const exPl = x.ex.filter(isPlannedEx).reduce((a, e) => a + (e.cal || 0), 0);
     h += `<section class="card"><h2>Exercise<small>${x.burned ? fmt(x.burned) + ' cal' : ''}${exPl ? ` · 🕒 ${fmt(exPl)} planned` : ''}</small></h2>
       ${x.ex.map((e, i) => `<div class="entry ${isPlannedEx(e) ? 'planned' : ''}" role="button" data-ex="${i}"><div class="nm"><div>${isPlannedEx(e) ? '🕒 ' : ''}${esc(e.name)}${e.est ? '<span class="est">EST</span>' : ''}</div><small>${e.min ? r0(e.min) + ' min' : ''}${isPlannedEx(e) ? ' · planned' : ` ${esc(e.source || '')}`}</small></div><div class="cal">${fmt(e.cal)}</div>
-        ${isPlannedEx(e) && state.date <= today() && e.id ? `<button class="ate-btn" data-exdid="${i}" aria-label="Did it">✓</button>` : ''}</div>`).join('') || '<div class="empty">No exercise yet</div>'}
+        ${state.date <= today() && e.id ? `<button class="ate-btn ${isPlannedEx(e) ? '' : 'on'}" data-exdid="${i}" aria-label="${isPlannedEx(e) ? 'Did it' : 'Done, tap to move back to planned'}">✓</button>` : ''}</div>`).join('') || '<div class="empty">No exercise yet</div>'}
       <button class="add-line" data-act="addex">+ Add exercise</button></section>`;
     if (waterOn()) h += `<section class="card"><h2>Water</h2><div class="water"><div class="cups">💧 ${r0(x.water)} fl oz</div>
       <button class="btn ghost" data-water="-8">−8</button><button class="btn" data-water="8">+8 oz</button></div></section>`;
@@ -959,7 +959,8 @@
     document.querySelectorAll('[data-ex]').forEach(b => b.onclick = ev => { if (ev.target.closest('[data-exdid]')) return; openModal({ type: 'ex', entry: (I().exByDate.get(state.date) || [])[Number(b.dataset.ex)] }); });
     document.querySelectorAll('[data-exdid]').forEach(b => b.onclick = ev => { ev.stopPropagation();
       const e = (I().exByDate.get(state.date) || [])[Number(b.dataset.exdid)]; if (!e) return;
-      markExPlanned(e, false); render(); toast(`${e.name} done`, 'Undo', () => { markExPlanned(e, true); render(); }); });
+      const was = isPlannedEx(e); markExPlanned(e, !was); render();
+      toast(was ? `${e.name} done` : `${e.name} back to planned`, 'Undo', () => { markExPlanned(e, was); render(); }); });
     document.querySelectorAll('[data-water]').forEach(b => b.onclick = () => setDayFlag({ water: Math.max(0, dayTotals(state.date).water + Number(b.dataset.water)) }));
     const gs = $('#goalsel'); if (gs) gs.onchange = () => savePlan({ 'Weekly goal (lb/week)': Number(gs.value) });
     document.querySelectorAll('[data-prange]').forEach(b => b.onclick = () => { state.progRange = b.dataset.prange; state.progOff = 0; render(); });
@@ -972,7 +973,8 @@
     document.querySelectorAll('[data-ate]').forEach(b => b.onclick = ev => {
       ev.stopPropagation();
       const l = (I().logByDate.get(state.date) || []).find(x => entryKey(x) === b.dataset.ate); if (!l) return;
-      markPlanned(l, false); render(); toast(`${l.name} confirmed`, 'Undo', () => { markPlanned(l, true); render(); });
+      const was = isPlanned(l); markPlanned(l, !was); render();
+      toast(was ? `${l.name} confirmed` : `${l.name} back to planned`, 'Undo', () => { markPlanned(l, was); render(); });
     });
     document.querySelectorAll('[data-confirm]').forEach(b => b.onclick = () => {
       const es = (I().logByDate.get(state.date) || []).filter(l => l.meal === b.dataset.confirm && isPlanned(l));
