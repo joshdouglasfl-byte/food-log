@@ -345,7 +345,7 @@
     if (!state.data) { $('#app').innerHTML = `<div class="wrap" style="padding-top:40px"><div class="card">${state.error ? 'Couldn’t load: ' + esc(state.error) + (state.error === 'unauthorized' ? '<div class="field" style="margin-top:12px"><label>Access key</label><input id="keyin" autocomplete="off" autocapitalize="off"></div><button class="btn big" id="keysave">Save key</button>' : '<br><br><button class="btn" onclick="location.reload()">Try again</button>') : 'Loading your log…'}</div></div>`; const ks = $('#keysave'); if (ks) ks.onclick = () => { save('key', ($('#keyin').value || '').trim()); location.reload(); };
       return; }
     const v = state.view;
-    $('#app').innerHTML = header() + `<main class="wrap">${v === 'day' ? dayView() : v === 'week' ? weekView() : settingsView()}</main>` + nav();
+    $('#app').innerHTML = header() + `<main class="wrap">${v === 'day' ? dayView() : v === 'week' ? weekView() : v === 'prefs' ? prefsView() : settingsView()}</main>` + nav();
     renderSync(); bind();
     if (state.modal) renderModal();
   }
@@ -358,7 +358,7 @@
     if (state.view === 'week') return `<header class="top"><div class="top-row">
       <button class="icon-btn" data-act="wprev">‹</button><h1>Week of ${esc(parse(weekStart(state.weekOf)).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }))}</h1>
       <button class="icon-btn" data-act="wnext">›</button></div><div class="sync" id="sync"></div></header>`;
-    return `<header class="top"><div class="top-row"><h1>${esc(PERSON)}’s plan</h1></div><div class="sync" id="sync"></div></header>`;
+    return `<header class="top"><div class="top-row"><h1>${state.view === 'prefs' ? 'Settings' : `${esc(PERSON)}’s plan`}</h1></div><div class="sync" id="sync"></div></header>`;
   }
   function renderSync() {
     const el = $('#sync'); if (!el) return;
@@ -368,7 +368,7 @@
   }
   function nav() {
     const b = (v, i, t) => `<button class="${state.view === v ? 'on' : ''}" data-view="${v}"><span class="i">${i}</span>${t}</button>`;
-    return `<nav class="tabs">${b('day', '📅', 'Day')}${b('week', '📊', 'Week')}<button class="plus" data-act="add">+</button>${b('settings', '🎯', 'Plan')}<button data-act="refresh"><span class="i">⟳</span>Sync</button></nav>`;
+    return `<nav class="tabs">${b('day', '📅', 'Day')}${b('week', '📊', 'Week')}<button class="plus" data-act="add">+</button>${b('settings', '🎯', 'Plan')}${b('prefs', newsUnread() ? '⚙️<i class="news-dot tab-dot"></i>' : '⚙️', 'Settings')}</nav>`;
   }
 
   function dayView() {
@@ -571,10 +571,16 @@
       <div class="level"><div class="ring" style="--p:${rw.pct}"><span>${rw.level}</span></div>
       <div>${fmt(rw.toNext)} XP to level ${rw.level + 1}<br><small style="color:var(--muted)">Streak ${rw.st} days · best ${rw.best}</small></div></div></section>
       <section class="card"><h2>Badges</h2><div class="badges">${rw.badges.map(([e, n, got]) => `<div class="badge ${got ? 'got' : ''}"><span class="e">${e}</span>${esc(n)}</div>`).join('')}</div>
-      <div class="sub" style="margin:10px 0 0">XP: 10 per day logged, +10 for done, +15 for done under budget, +25 per week of streak</div></section>
+      <div class="sub" style="margin:10px 0 0">XP: 10 per day logged, +10 for done, +15 for done under budget, +25 per week of streak</div></section>`;
+  }
+  function prefsView() {
+    const vs = visibleSlots();
+    return `<section class="card"><h2>Sync</h2><div class="sub" style="text-align:left;margin:0 0 4px">${state.queue.length ? `${state.queue.length} change${state.queue.length === 1 ? '' : 's'} waiting to save (next: ${esc(state.queue[0].action)}${state.queue[0].tries ? `, tried ${state.queue[0].tries}×` : ''})` : 'All changes saved'}${state.error ? ` · last error: ${esc(state.error)}` : ''}${load('failed', []).length ? ` · ${load('failed', []).length} set aside` : ''}</div>
+      <div class="sub" style="text-align:left;margin:0 0 10px">Last sync ${esc(new Date(state.data.serverTime || Date.now()).toLocaleString())}</div>
+      <button class="btn big" data-act="refresh">${state.syncing ? 'Syncing…' : '⟳ Sync now'}</button></section>
       <section class="card"><h2>Meal sections</h2>${ALL_SLOTS.map(s => `<div class="toggle-row"><span>${s}</span><button class="switch ${vs.includes(s) ? 'on' : ''}" data-slot="${s}"></button></div>`).join('')}</section>
       <section class="card"><h2>Extras</h2><div class="toggle-row"><span>Track water</span><button class="switch ${waterOn() ? 'on' : ''}" data-act="water"></button></div></section>
-      <section class="card"><div class="sub" style="margin:0 0 6px">${state.queue.length ? `${state.queue.length} change${state.queue.length === 1 ? '' : 's'} waiting to save (next: ${esc(state.queue[0].action)}${state.queue[0].tries ? `, tried ${state.queue[0].tries}×` : ''})` : 'All changes saved'}${state.error ? ` · last error: ${esc(state.error)}` : ''}${load('failed', []).length ? ` · ${load('failed', []).length} set aside` : ''}</div><div class="sub" style="margin:0">App version ${esc(load('version', '?'))} · Data: Food_Log sheet · ${state.data.foods.length.toLocaleString()} foods · last sync ${esc(new Date(state.data.serverTime || Date.now()).toLocaleString())}</div><button class="news-line" data-act="news">What's new${newsUnread() ? '<i class="news-dot" aria-label="unread"></i>' : ''}<span>›</span></button></section>`;
+      <section class="card"><h2>About</h2><div class="sub" style="margin:0">App version ${esc(load('version', '?'))} · Data: Food_Log sheet · ${state.data.foods.length.toLocaleString()} foods</div><button class="news-line" data-act="news">What's new${newsUnread() ? '<i class="news-dot" aria-label="unread"></i>' : ''}<span>›</span></button></section>`;
   }
 
   // ---------- what's new ----------
@@ -1252,7 +1258,7 @@
       }
       const changed = v.version !== seen;
       save('version', v.version);
-      if (changed && state.view === 'settings' && !state.modal && state.data) render();
+      if (changed && state.view === 'prefs' && !state.modal && state.data) render();
     } catch (e) {}
     return false;
   }

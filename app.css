@@ -216,3 +216,4 @@ input, textarea, select { -webkit-user-select: text; user-select: text; }
 .news-entry li { margin: 4px 0; line-height: 1.35; }
 .est-note { color: var(--gold); }
 .qty-row .field { min-width: 0; } .qty-row .field input { width: 100%; box-sizing: border-box; }
+.tabs .i { position: relative; } .tab-dot { position: absolute; top: 0; right: -4px; }
