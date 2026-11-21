@@ -185,3 +185,12 @@ b.ok { color: var(--green); } b.bad { color: var(--over); }
 .dow button { padding: 12px 0; border-radius: 10px; border: 1.5px solid var(--green); color: var(--green); font-weight: 650; background: var(--card); }
 .dow button.on { background: var(--green); color: #fff; }
 .xtra-in { padding: 10px 6px; border-radius: 10px; border: 1.5px solid var(--green); text-align: center; font: inherit; font-weight: 650; min-width: 0; }
+.vbars { position: relative; display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; height: 175px; margin: 6px 0 4px; align-items: end; }
+.vcol { display: flex; flex-direction: column; justify-content: flex-end; align-items: center; height: 100%; position: relative; }
+.vbar { width: 70%; max-width: 42px; background: var(--green-2); border-radius: 6px 6px 0 0; }
+.vbar.hi { background: var(--gold); }
+.vval { font-size: .72rem; font-weight: 700; margin-bottom: 3px; font-variant-numeric: tabular-nums; }
+.vday { font-size: .8rem; font-weight: 600; margin-top: 4px; color: var(--muted); height: 20px; line-height: 20px; }
+.vline { position: absolute; left: 0; right: 0; border-top: 2px dashed rgba(31,42,36,.4); z-index: 1; pointer-events: none; }
+.vline span { position: absolute; left: 0; top: -17px; font-size: .7rem; color: var(--muted); background: var(--card); padding: 0 3px; }
+.plan-legend i.hi { background: var(--gold); } .plan-legend i.avgl { background: none; border-top: 2px dashed rgba(31,42,36,.45); height: 0; }

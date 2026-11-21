@@ -403,18 +403,19 @@
     const ws = weekStart(today()), days = [...Array(7)].map((_, i) => addDays(ws, i));
     const tg = days.map(d => Math.round(pl.base + pl.sch.adj[parse(d).getDay()]));
     const lo = Math.min(pl.burn, ...tg) * 0.6, mx = Math.max(pl.burn, ...tg) * 1.03, pct = v => (v - lo) / (mx - lo) * 100;
-    const rows = days.map((d, i) => {
-      const t = tg[i], adj = t - Math.round(pl.base);
-      return `<div class="plan-row"><div class="d">${parse(d).toLocaleDateString(undefined, { weekday: 'short' })}</div>
-        <div class="plan-bar"><div class="burn" style="width:${pct(pl.burn)}%"></div><div class="tgt ${t > pl.burn + 1 ? 'gain' : ''}" style="width:${pct(t)}%"></div></div>
-        <div class="v">${fmt(t)}${adj ? `<small>${adj > 0 ? '+' : '−'}${fmt(Math.abs(adj))}</small>` : ''}</div></div>`;
-    }).join('');
+    // upright bars, one per day, with a dashed line at the average day so high and low days read at a glance
+    const avgDay = pl.base, top = Math.max(...tg, avgDay), bottom = Math.min(...tg, avgDay) * 0.82;
+    const hgt = v => 18 + (v - bottom) / (top - bottom || 1) * 82;   // % of chart height
+    const rows = `<div class="vbars"><div class="vline" style="bottom:${24 + hgt(avgDay) * 1.3}px"><span>${fmt(avgDay)}</span></div>${days.map((d, i) => {
+      const t = tg[i], hi = t > avgDay + 1, lo = t < avgDay - 1;
+      return `<div class="vcol"><div class="vval">${fmt(t)}</div><div class="vbar ${hi ? 'hi' : lo ? 'lo' : ''}" style="height:${hgt(t) * 1.3}px"></div><div class="vday">${parse(d).toLocaleDateString(undefined, { weekday: 'short' }).slice(0, 2)}</div></div>`;
+    }).join('')}</div>`;
     const wk = tg.reduce((a, b) => a + b, 0);
     return `<section class="card"><h2>My plan</h2>
       <p class="plan-txt">At ${pl.age}, ${Math.floor(pl.h / 12)}′${Math.round(pl.h % 12)}″ and ${pl.wt} lb, your sedentary burn is ${pl.manual ? `${fmt(pl.sedentary)}, and with your ${pl.manual < 0 ? '−' : '+'}${fmt(Math.abs(pl.manual))} manual adjustment it’s <b>${fmt(pl.burn)}</b>` : `<b>${fmt(pl.burn)}</b>`} cal a day.
       Your plan is to <b>${goalTxt}</b>${pl.daily ? `, ${pl.daily < 0 ? 'minus' : 'plus'} ${fmt(Math.abs(pl.daily))} a day` : ''}, for a daily target of <b>${fmt(pl.base)}</b>.</p>
       ${rows}
-      <div class="plan-legend"><span><i class="burn"></i>${pl.manual ? 'Adjusted burn' : 'Sedentary burn'}</span><span><i class="tgt"></i>Target</span></div>
+      <div class="plan-legend"><span><i class="tgt"></i>Target</span>${pl.sch.high.length ? '<span><i class="hi"></i>High day</span>' : ''}<span><i class="avgl"></i>Average day</span></div>
       <div class="sub" style="margin:6px 0 0">Week total ${fmt(wk)} cal · exercise adds to each day · this week’s days already logged keep their budget</div>
       <div class="field" style="margin-top:12px"><label>Weekly goal</label><select id="goalsel">${[...new Set([...GOALS, pl.goal])].sort((a, b) => a - b).map(g => `<option value="${g}" ${g === pl.goal ? 'selected' : ''}>${g === 0 ? 'Maintain' : (g < 0 ? 'Lose ' : 'Gain ') + Math.abs(g) + ' lb a week'}</option>`).join('')}</select></div>
       <div class="field"><label>Manual adjustment to burn</label><select id="mansel">${[...new Set([-500, -400, -300, -250, -200, -150, -100, -50, 0, 50, 100, 200, 300, pl.manual])].sort((a, b) => a - b).map(v => `<option value="${v}" ${v === pl.manual ? 'selected' : ''}>${v ? (v > 0 ? '+' : '−') + Math.abs(v) + ' cal a day' : 'None'}</option>`).join('')}</select></div>
