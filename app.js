@@ -102,7 +102,7 @@
         j.exLib = prev.exLib;
         state.data = j; persist(); state.error = ''; syncBudgets(); if (!state.modal) render(); else renderSync();
       } // don't overwrite unsynced local changes
-      loadPlanned(); loadExFlags(); loadExLib(); loadBody(); loadServings();
+      loadPlanned(); loadExFlags(); loadExLib(); loadBody(); loadServings(); loadCoach();
     } catch (e) { state.error = String(e.message || e); if (state.data) renderSync(); else render(); }
   }
   const persist = () => { save('data', state.data); idx = null; };
@@ -134,6 +134,30 @@
       persist(); render();
     } catch (e) {}
   }
+  // Notes from the person's dietitian (Coach Notes tab, written by Claude); Status Read once acknowledged
+  async function loadCoach() {
+    try {
+      const j = await api('read', { tab: 'Coach Notes', person: PERSON, limit: 30 });
+      state.data.coach = j.rows.filter(r => r.EntryID && r.Message).map(r => ({ id: String(r.EntryID), date: String(r.Date).slice(0, 10), time: String(r.Time || ''), from: String(r.From || 'Dietitian'), msg: String(r.Message), read: r.Status === 'Read' }));
+      persist(); if (!state.modal) render();
+    } catch (e) {}
+  }
+  const coachUnread = () => (state.data.coach || []).filter(n => !n.read);
+  function coachCard() {
+    const un = coachUnread(); if (!un.length || state.date !== today()) return '';
+    return `<section class="card coach"><h2>💬 From your dietitian</h2>${un.slice(-3).map(n => `<div class="coach-note"><div class="coach-msg">${esc(n.msg)}</div>
+      <div class="coach-foot"><small>${esc(shortDay(n.date))}</small><span><button class="link-btn" data-coachreply="1">Reply</button><button class="btn" data-coachread="${esc(n.id)}">Got it</button></span></div></div>`).join('')}</section>`;
+  }
+  function coachSheet() {
+    const ns = (state.data.coach || []).slice().reverse();
+    return head('Coach notes') + `<div class="sheet-body">${ns.length ? ns.map(n => `<div class="coach-note"><div class="coach-msg">${esc(n.msg)}</div><small>${esc(n.from)} · ${esc(shortDay(n.date))}</small></div>`).join('') : '<div class="empty">No notes yet. Your dietitian\'s replies show up here.</div>'}
+      <button class="btn big" data-m="coachreply">💬 Reply to my dietitian</button></div>`;
+  }
+  function coachRead(id) {
+    const n = (state.data.coach || []).find(x => x.id === id); if (!n) return;
+    n.read = true; persist(); enqueue('update', { tab: 'Coach Notes', id, values: { Status: 'Read' } }); render();
+  }
+
   async function loadServings() {
     try {
       const j = await api('read', { tab: 'Servings' });
@@ -379,7 +403,7 @@
     const x = dayTotals(state.date), over = x.left < 0;
     const cap = x.budget + x.burned, pct = cap > 0 ? Math.min(100, x.eaten / cap * 100) : 0;
     const markPct = cap > 0 ? Math.min(100, x.budget / cap * 100) : 0;
-    let h = `<section class="card"><div class="summary">
+    let h = coachCard() + `<section class="card"><div class="summary">
       <div><b>${fmt(x.budget)}</b><span>Budget</span></div><div><b>${fmt(x.eaten)}</b><span>Food</span></div>
       <div><b>${fmt(x.burned)}</b><span>Exercise</span></div><div class="left ${over ? 'over' : ''}"><b>${fmt(Math.abs(x.left))}</b><span>${over ? 'Over' : 'Left'}</span></div></div>
       <div class="bar"><div class="fill ${over ? 'over' : ''}" style="width:${pct}%"></div>${x.burned ? `<div class="mark" style="left:${markPct}%"></div>` : ''}</div>
@@ -410,6 +434,7 @@
       : `<button class="btn big done" data-act="done">I'm done logging today</button>`;
     if (x.log.length) h += `<div class="tell"><button data-act="copyday">📋 Copy this day</button></div>`;
     h += `<div class="tell"><button data-tell="Dietitian">💬 Tell my dietitian</button><button data-tell="Developer">🛠 Tell my developer</button></div>`;
+    if ((state.data.coach || []).length) h += `<div class="tell"><button data-act="coachnotes">📬 Coach notes</button></div>`;
     return h;
   }
   const entryKey = l => l.id || `${l.date}|${l.meal}|${l.name}|${l.qty}`;
@@ -658,7 +683,7 @@
       o.addEventListener('click', e => { if (e.target === o) closeModal(); }); }
     const m = state.modal;
     const body = m.type === 'add' ? addSheet(m) : m.type === 'food' ? foodSheet(m) : m.type === 'entry' ? entrySheet(m)
-      : m.type === 'quick' ? quickSheet(m) : m.type === 'ex' ? exSheet(m) : m.type === 'meal' ? mealSheet(m) : m.type === 'tell' ? tellSheet(m) : m.type === 'scan' ? scanSheet(m) : m.type === 'sched' ? schedSheet(m) : m.type === 'savemeal' ? saveMealSheet(m) : m.type === 'copy' ? copySheet(m) : m.type === 'news' ? newsSheet(m) : '';
+      : m.type === 'quick' ? quickSheet(m) : m.type === 'ex' ? exSheet(m) : m.type === 'meal' ? mealSheet(m) : m.type === 'tell' ? tellSheet(m) : m.type === 'scan' ? scanSheet(m) : m.type === 'sched' ? schedSheet(m) : m.type === 'savemeal' ? saveMealSheet(m) : m.type === 'copy' ? copySheet(m) : m.type === 'news' ? newsSheet(m) : m.type === 'coach' ? coachSheet(m) : '';
     const keepSearch = $('#q') && document.activeElement === $('#q');
     const pos = keepSearch ? $('#q').selectionStart : null;
     o.innerHTML = `<div class="sheet">${body}</div>`;
@@ -1070,6 +1095,8 @@
       toast(`${es.length} item${es.length === 1 ? '' : 's'} confirmed`, 'Undo', () => { es.forEach(l => markPlanned(l, true)); render(); });
     });
     document.querySelectorAll('[data-tell]').forEach(b => b.onclick = () => openModal({ type: 'tell', to: b.dataset.tell }));
+    document.querySelectorAll('[data-coachread]').forEach(b => b.onclick = () => coachRead(b.dataset.coachread));
+    document.querySelectorAll('[data-coachreply]').forEach(b => b.onclick = () => openModal({ type: 'tell', to: 'Dietitian' }));
     document.querySelectorAll('[data-savemeal]').forEach(b => b.onclick = () => {
       const sl = b.dataset.savemeal, its = (I().logByDate.get(state.date) || []).filter(l => l.meal === sl);
       openModal({ type: 'savemeal', slot: sl, items: its, name: '' });
@@ -1104,6 +1131,7 @@
     else if (a === 'addex') return openModal({ type: 'ex' });
     else if (a === 'copyday') return openModal({ type: 'copy' });
     else if (a === 'news') return openNews();
+    else if (a === 'coachnotes') return openModal({ type: 'coach' });
     else if (a === 'copyhae') return copyText(haeUrl(), 'Health Auto Export URL');
     else if (a === 'refresh') { toast('Syncing…'); return refresh(); }
     else if (a === 'done') {
@@ -1301,6 +1329,7 @@
       renderModal(); return toast(`Serving saved: ${g} g`);
     }
     if (a === 'schedsave') { const H = (m.high || []).length; return H > 0 && H < 7 ? saveSchedule(m.high, m.extra ?? 150) : saveSchedule([], 0); }
+    if (a === 'coachreply') { state.modal = { type: 'tell', to: 'Dietitian' }; return renderModal(); }
     if (a === 'tellsave') {
       const msg = ($('#tellmsg').value || '').trim(); if (!msg) return toast('Type or dictate a message');
       enqueue('append', { tab: 'Feedback', headers: ['Date', 'Time', 'Person', 'For', 'Message', 'Status', 'EntryID'],

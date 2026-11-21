@@ -2,8 +2,9 @@
  "entries": [
   {
    "date": "2026-11-21",
-   "version": "20261121151952",
+   "version": "20261121161709",
    "items": [
+    "Notes from your dietitian now show at the top of today, with Got it and Reply (older notes under 📬 Coach notes)",
     "Swipe left on a food in your log to delete it (with Undo)",
     "Food list shows the restaurant and when you last had each food",
     "Restaurant foods with a known serving open at 1 serving instead of grams",
