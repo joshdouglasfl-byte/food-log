@@ -91,7 +91,14 @@
       const res = await fetch(`${CFG.API_URL}?action=bootstrap&person=${encodeURIComponent(PERSON)}&key=${encodeURIComponent(load('key', ''))}`, { signal: ctl.signal }); clearTimeout(tm);
       const j = await res.json();
       if (!j.ok) throw new Error(j.error);
-      if (!state.queue.length) { state.data = j; persist(); state.error = ''; syncBudgets(); render(); } // don't overwrite unsynced local changes
+      if (!state.queue.length) {
+        const prev = state.data || {};
+        // carry over what the background loads add, so a refresh doesn't make screens flicker
+        j.servings = prev.servings; j.bodyAll = prev.bodyAll;
+        const planned = new Map((prev.log || []).filter(l => l.id && l.planned !== undefined).map(l => [l.id, l.planned]));
+        j.log.forEach(l => { if (planned.has(l.id)) l.planned = planned.get(l.id); });
+        state.data = j; persist(); state.error = ''; syncBudgets(); if (!state.modal) render(); else renderSync();
+      } // don't overwrite unsynced local changes
       loadPlanned(); loadBody(); loadServings();
     } catch (e) { state.error = String(e.message || e); if (state.data) renderSync(); else render(); }
   }
@@ -109,7 +116,7 @@
     try {
       const j = await api('read', { tab: 'Servings' });
       state.data.servings = j.rows.filter(r => r.FoodID && Number(r.Grams) > 0).map(r => ({ food: r.FoodID, unit: String(r.Unit || 'Serving'), grams: Number(r.Grams), id: r.EntryID }));
-      persist();
+      persist(); if (!state.modal) render();
     } catch (e) {}
   }
   async function loadBody() {
@@ -119,7 +126,7 @@
         date: String(r.Date).slice(0, 10), weight: Number(r['Weight (lb)']) || null,
         fatPct: r['Body fat (%)'] === '' ? null : Number(r['Body fat (%)']), fatLb: r['Fat mass (lb)'] === '' ? null : Number(r['Fat mass (lb)']) }))
         .sort((a, b) => a.date < b.date ? -1 : 1);
-      persist(); if (state.view === 'settings') render();
+      persist(); if (state.view === 'settings' && !state.modal) render();
     } catch (e) {}
   }
   const isPlanned = l => l.planned === true || (l.planned === undefined && l.date > today());
@@ -523,7 +530,7 @@
 
   // ---------- modals ----------
   function openModal(m) { state.modal = m; renderModal(); }
-  function closeModal() { stopScan(); state.modal = null; const o = $('#overlay'); if (o) o.remove(); }
+  function closeModal() { stopScan(); state.modal = null; const o = $('#overlay'); if (o) o.remove(); render(); }
   function renderModal() {
     let o = $('#overlay');
     if (!o) { o = document.createElement('div'); o.id = 'overlay'; o.className = 'overlay'; document.body.appendChild(o);
