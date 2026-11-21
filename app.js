@@ -80,7 +80,7 @@
       const j = await res.json();
       if (!j.ok) throw new Error(j.error);
       if (state.queue.length) return; // don't overwrite unsynced local changes
-      state.data = j; persist(); state.error = ''; syncBudgets(); render(); loadPlanned();
+      state.data = j; persist(); state.error = ''; syncBudgets(); render(); loadPlanned(); loadBody();
     } catch (e) { state.error = String(e.message || e); if (state.data) renderSync(); else render(); }
   }
   const persist = () => { save('data', state.data); idx = null; };
@@ -91,6 +91,16 @@
       const flag = new Map(j.rows.filter(r => r.EntryID).map(r => [r.EntryID, r.Planned === 'Yes']));
       state.data.log.forEach(l => { if (l.id && flag.has(l.id)) l.planned = flag.get(l.id); });
       persist(); render();
+    } catch (e) {}
+  }
+  async function loadBody() {
+    try {
+      const j = await api('read', { tab: 'Body' });
+      state.data.bodyAll = j.rows.filter(r => r.Date && r['Weight (lb)'] !== '').map(r => ({
+        date: String(r.Date).slice(0, 10), weight: Number(r['Weight (lb)']) || null,
+        fatPct: r['Body fat (%)'] === '' ? null : Number(r['Body fat (%)']), fatLb: r['Fat mass (lb)'] === '' ? null : Number(r['Fat mass (lb)']) }))
+        .sort((a, b) => a.date < b.date ? -1 : 1);
+      persist(); if (state.view === 'settings') render();
     } catch (e) {}
   }
   const isPlanned = l => l.planned === true || (l.planned === undefined && l.date > today());
@@ -381,63 +391,87 @@
     </section>`;
   }
   // ---------- progress ----------
+  const RANGES = [['7', 'Week'], ['30', 'Month'], ['90', 'Quarter'], ['ytd', 'YTD'], ['365', 'Year']];
+  function progWindow() {
+    const r = state.progRange || '90', off = state.progOff || 0, t = today();
+    if (r === 'ytd') {
+      const y = parse(t).getFullYear() + off;
+      return { from: `${y}-01-01`, to: off === 0 ? t : `${y}-12-31`, label: off === 0 ? `${y} so far` : `${y}` };
+    }
+    const n = Number(r), to = addDays(t, off * n), from = addDays(to, -n + 1);
+    const f = d => parse(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: n >= 365 || parse(d).getFullYear() !== parse(t).getFullYear() ? 'numeric' : undefined });
+    return { from, to, label: off === 0 ? `Last ${({ 7: 'week', 30: 'month', 90: 'quarter', 365: 'year' })[n]}` : `${f(from)} – ${f(to)}` };
+  }
   function progressCard() {
     const p = profile();
     const goal = Number(p['Fat mass goal (lb)']) || null;
     const gdate = String(p['Goal date'] || '').slice(0, 10) || null;
-    const body = (state.data.body || []).filter(b => b.weight).slice(-60);
+    const all = (state.data.bodyAll || state.data.body || []).filter(b => b.weight);
     const editor = `<div class="qty-row" style="margin-top:12px">
         <div class="field" style="flex:1"><label>Fat mass goal (lb)</label><input id="fgoal" type="number" inputmode="decimal" step="0.5" value="${goal ?? ''}" placeholder="e.g. 40"></div>
         <div class="field" style="flex:1"><label>Target date</label><input id="fdate" type="date" value="${gdate ?? ''}"></div></div>`;
-    if (body.length < 3) return `<section class="card"><h2>Progress</h2><div class="empty">Not enough weigh-ins yet.</div>${editor}</section>`;
-    const fat = body.filter(b => b.fatLb);
-    const useFat = fat.length >= 3;
-    const pts = (useFat ? fat : body).map(b => ({ d: b.date, v: useFat ? b.fatLb : b.weight }));
-    // rolling average of the last 7 readings
-    const avg = pts.map((x, i) => { const w = pts.slice(Math.max(0, i - 6), i + 1); return { d: x.d, v: w.reduce((a, b) => a + b.v, 0) / w.length }; });
-    const cur = avg[avg.length - 1].v, t = today();
-    // pace: linear fit over readings in the last 28 days (lb per week)
-    const recent = pts.filter(x => daysBetween(x.d, t) <= 28);
-    let pace = null;
-    if (recent.length >= 3) {
-      const xs = recent.map(r => daysBetween(recent[0].d, r.d)), ys = recent.map(r => r.v);
-      const mx = xs.reduce((a, b) => a + b, 0) / xs.length, my = ys.reduce((a, b) => a + b, 0) / ys.length;
-      const den = xs.reduce((a, x) => a + (x - mx) ** 2, 0);
-      if (den) pace = xs.reduce((a, x, i) => a + (x - mx) * (ys[i] - my), 0) / den * 7;
-    }
+    const seg = `<div class="seg">${RANGES.map(([k, n]) => `<button class="${(state.progRange || '90') === k ? 'on' : ''}" data-prange="${k}">${n}</button>`).join('')}</div>`;
+    const win = progWindow(), t = today(), isNow = (state.progOff || 0) === 0;
+    const nav = `<div class="prog-nav"><button class="icon-btn" data-poff="-1">‹</button><span>${esc(win.label)}</span><button class="icon-btn" data-poff="1" ${isNow ? 'disabled' : ''}>›</button></div>`;
+    if (all.length < 3) return `<section class="card"><h2>Progress</h2>${seg}<div class="empty">Not enough weigh-ins yet.</div>${editor}</section>`;
+    const fatAll = all.filter(b => b.fatLb);
+    const useFat = fatAll.length >= 3;
+    const series = (useFat ? fatAll : all).map(b => ({ d: b.date, v: useFat ? b.fatLb : b.weight }));
+    // rolling average of the last 7 readings, over the full history so window edges are smooth
+    const avgAll = series.map((x, i) => { const w = series.slice(Math.max(0, i - 6), i + 1); return { d: x.d, v: w.reduce((a, b) => a + b.v, 0) / w.length }; });
+    const pts = series.filter(x => x.d >= win.from && x.d <= win.to);
+    const avg = avgAll.filter(x => x.d >= win.from && x.d <= win.to);
+    const f1 = v => (Math.round(v * 10) / 10).toFixed(1);
+    const label = useFat ? 'Fat mass' : 'Weight';
+    const fmtD = d => parse(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    if (pts.length < 2) return `<section class="card"><h2>Progress</h2>${seg}${nav}<div class="empty">Fewer than two weigh-ins in this period.</div>${editor}</section>`;
+    const cur = avgAll[avgAll.length - 1].v;
+    // pace over the last 28 days (lb/week), for the goal projection
+    const fit = arr => { if (arr.length < 3) return null; const xs = arr.map(r => daysBetween(arr[0].d, r.d)), ys = arr.map(r => r.v);
+      const mx = xs.reduce((a, b) => a + b, 0) / xs.length, my = ys.reduce((a, b) => a + b, 0) / ys.length, den = xs.reduce((a, x) => a + (x - mx) ** 2, 0);
+      return den ? xs.reduce((a, x, i) => a + (x - mx) * (ys[i] - my), 0) / den * 7 : null; };
+    const pace = fit(series.filter(x => daysBetween(x.d, t) <= 28));
     const weeksLeft = gdate ? Math.max(0, daysBetween(t, gdate) / 7) : null;
     const toGo = goal != null ? cur - goal : null;
     const need = goal != null && weeksLeft ? toGo / weeksLeft : null;
     let proj = null;
     if (goal != null && pace != null && pace < 0 && toGo > 0) proj = addDays(t, Math.round(toGo / -pace * 7));
-    // chart
+    // chart: the window, plus the run to the goal date when looking at the current period
+    const showGoal = goal != null && isNow;
     const W = 340, H = 170, L = 34, R = 8, T = 10, B = 22;
-    const d0 = pts[0].d, dEnd = gdate && gdate > t ? gdate : t;
+    const d0 = win.from, dEnd = showGoal && gdate && gdate > win.to ? gdate : win.to;
     const span = Math.max(1, daysBetween(d0, dEnd));
-    const vals = pts.map(x => x.v).concat(goal != null ? [goal] : []);
+    const vals = pts.map(x => x.v).concat(avg.map(x => x.v)).concat(showGoal ? [goal] : []);
     const lo = Math.floor(Math.min(...vals) - 1), hi = Math.ceil(Math.max(...vals) + 1);
     const X = d => L + daysBetween(d0, d) / span * (W - L - R), Y = v => T + (hi - v) / (hi - lo) * (H - T - B);
     const line = a => a.map((x, i) => `${i ? 'L' : 'M'}${X(x.d).toFixed(1)},${Y(x.v).toFixed(1)}`).join(' ');
     let svg = `<svg viewBox="0 0 ${W} ${H}" class="prog">`;
     for (let k = 0; k <= 4; k++) { const v = lo + (hi - lo) * k / 4; svg += `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" class="grid"/><text x="${L - 4}" y="${Y(v) + 4}" text-anchor="end" class="ax">${Math.round(v)}</text>`; }
-    svg += pts.map(x => `<circle cx="${X(x.d)}" cy="${Y(x.v)}" r="2" class="raw"/>`).join('');
+    svg += pts.map(x => `<circle cx="${X(x.d)}" cy="${Y(x.v)}" r="${pts.length > 120 ? 1.4 : 2.2}" class="raw"/>`).join('');
     svg += `<path d="${line(avg)}" class="avg"/>`;
-    if (goal != null) {
+    if (showGoal) {
       svg += `<line x1="${L}" x2="${W - R}" y1="${Y(goal)}" y2="${Y(goal)}" class="goal"/><text x="${W - R}" y="${Y(goal) - 4}" text-anchor="end" class="ax goalt">goal ${goal}</text>`;
       if (gdate && gdate > t) svg += `<path d="M${X(t)},${Y(cur)} L${X(gdate)},${Y(goal)}" class="need"/>`;
       if (pace != null) { const end = gdate && gdate > t ? gdate : addDays(t, 28); svg += `<path d="M${X(t)},${Y(cur)} L${X(end)},${Y(cur + pace * daysBetween(t, end) / 7)}" class="pace"/>`; }
     }
     svg += `<text x="${L}" y="${H - 6}" class="ax">${esc(parse(d0).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }))}</text><text x="${W - R}" y="${H - 6}" text-anchor="end" class="ax">${esc(parse(dEnd).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }))}</text></svg>`;
-    const f1 = v => (Math.round(v * 10) / 10).toFixed(1);
-    const status = need == null || pace == null ? '' : (-pace >= need ? '<b class="ok">on pace</b>' : '<b class="bad">behind pace</b>');
-    const lastW = body[body.length - 1].weight;
-    const txt = goal != null
-      ? `${useFat ? 'Fat mass' : 'Weight'} is <b>${f1(cur)} lb</b> (7-reading average), <b>${f1(Math.max(0, toGo))} lb</b> from your ${goal} lb goal.
-         ${need != null ? `To hit it by ${esc(parse(gdate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }))} you need <b>${f1(need)} lb/week</b>.` : 'Set a target date to see the pace you need.'}
-         ${pace != null ? `Your last 4 weeks: <b>${f1(-pace)} lb/week</b> ${pace <= 0 ? 'down' : 'up'}${proj ? `, reaching the goal around <b>${esc(parse(proj).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }))}</b>` : ''}. ${status}` : ''}`
-      : `${useFat ? 'Fat mass' : 'Weight'} is <b>${f1(cur)} lb</b> (7-reading average). Set a goal below to track pace.`;
-    return `<section class="card"><h2>Progress<small>weight ${lastW} lb</small></h2>${svg}
-      <div class="plan-legend"><span><i class="avg"></i>${useFat ? 'Fat mass' : 'Weight'} (avg)</span>${goal != null ? '<span><i class="need"></i>Needed</span><span><i class="pace"></i>Your pace</span>' : ''}</div>
+    // period summary
+    const a0 = avg[0].v, a1 = avg[avg.length - 1].v, wks = Math.max(1 / 7, daysBetween(avg[0].d, avg[avg.length - 1].d) / 7);
+    const delta = a1 - a0;
+    const wPts = all.filter(b => b.date >= win.from && b.date <= win.to);
+    const wDelta = wPts.length > 1 ? wPts[wPts.length - 1].weight - wPts[0].weight : null;
+    let txt = `<b>${esc(win.label)}:</b> ${label.toLowerCase()} ${delta <= 0 ? 'down' : 'up'} <b>${f1(Math.abs(delta))} lb</b> (${f1(Math.abs(delta) / wks)} lb/week)${wDelta != null && useFat ? `, weight ${wDelta <= 0 ? 'down' : 'up'} ${f1(Math.abs(wDelta))} lb` : ''}.`;
+    if (isNow) {
+      const status = need == null || pace == null ? '' : (-pace >= need ? '<b class="ok">on pace</b>' : '<b class="bad">behind pace</b>');
+      txt += goal != null
+        ? ` Now <b>${f1(cur)} lb</b>, <b>${f1(Math.max(0, toGo))} lb</b> from your ${goal} lb goal.
+           ${need != null ? `By ${esc(fmtD(gdate))} you need <b>${f1(need)} lb/week</b>.` : 'Set a target date to see the pace you need.'}
+           ${pace != null ? `Last 4 weeks: <b>${f1(-pace)} lb/week</b> ${pace <= 0 ? 'down' : 'up'}${proj ? `, goal around <b>${esc(fmtD(proj))}</b>` : ''}. ${status}` : ''}`
+        : ` Now <b>${f1(cur)} lb</b>. Set a goal below to track pace.`;
+    }
+    const lastW = all[all.length - 1].weight;
+    return `<section class="card"><h2>Progress<small>weight ${lastW} lb</small></h2>${seg}${nav}${svg}
+      <div class="plan-legend"><span><i class="avg"></i>${label} (avg)</span>${showGoal ? '<span><i class="need"></i>Needed</span><span><i class="pace"></i>Your pace</span>' : ''}</div>
       <p class="plan-txt" style="margin-top:10px">${txt}</p>${editor}</section>`;
   }
   function settingsView() {
@@ -644,6 +678,8 @@
     document.querySelectorAll('[data-ex]').forEach((b, i) => b.onclick = () => openModal({ type: 'ex', entry: (I().exByDate.get(state.date) || [])[i] }));
     document.querySelectorAll('[data-water]').forEach(b => b.onclick = () => setDayFlag({ water: Math.max(0, dayTotals(state.date).water + Number(b.dataset.water)) }));
     const gs = $('#goalsel'); if (gs) gs.onchange = () => savePlan({ 'Weekly goal (lb/week)': Number(gs.value) });
+    document.querySelectorAll('[data-prange]').forEach(b => b.onclick = () => { state.progRange = b.dataset.prange; state.progOff = 0; render(); });
+    document.querySelectorAll('[data-poff]').forEach(b => b.onclick = () => { state.progOff = Math.min(0, (state.progOff || 0) + Number(b.dataset.poff)); render(); });
     const fg = $('#fgoal'); if (fg) fg.onchange = () => savePlan({ 'Fat mass goal (lb)': fg.value === '' ? '' : Number(fg.value) });
     const fd = $('#fdate'); if (fd) fd.onchange = () => savePlan({ 'Goal date': fd.value });
     const ms = $('#mansel'); if (ms) ms.onchange = () => savePlan({ 'Manual adjustment (cal)': Number(ms.value) });

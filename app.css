@@ -166,3 +166,7 @@ b.ok { color: var(--green); } b.bad { color: var(--over); }
 .stepper { display: flex; gap: 8px; align-items: stretch; }
 .stepper input { flex: 1; min-width: 0; text-align: center; padding: 13px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); font-size: 1.2rem; }
 .stepper .btn { min-width: 56px; font-size: 1.4rem; padding: 8px 12px; }
+.prog-nav { display: flex; align-items: center; justify-content: space-between; margin: 2px 0 6px; }
+.prog-nav span { font-weight: 650; font-size: .95rem; }
+.prog-nav .icon-btn { width: 36px; height: 36px; font-size: 1.1rem; }
+.prog-nav .icon-btn:disabled { opacity: .3; }
