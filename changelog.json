@@ -2,8 +2,9 @@
  "entries": [
   {
    "date": "2026-11-21",
-   "version": "20261121175006",
+   "version": "20261121175300",
    "items": [
+    "Search results show \"Your foods\" first, then a blue USDA box for foods you haven't added yet",
     "Adding food is steadier on the phone: the search box no longer jumps while you type, and autocorrect is off in it",
     "The add-food screen drops the meal buttons and just says which meal you're adding to",
     "Quick entry asks whether you're sure of the calories or your dietitian can adjust them",

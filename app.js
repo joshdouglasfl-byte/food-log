@@ -731,7 +731,7 @@
       else foods = foods.filter(f => score.has(f.id));
       foods = foods.map(f => [f, score.get(f.id) || 0]).sort((a, b) => b[1] - a[1] || a[0].name.localeCompare(b[0].name)).slice(0, 60);
       list = `<div class="qty-row"><input id="q" class="search" type="search" enterkeyhint="search" placeholder="Search your foods" value="${esc(m.q || '')}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"><button class="btn ghost" style="margin-bottom:8px" data-m="scan">📷 Scan</button></div><div id="addres">
-        ${!toks.length ? `<div class="sub" style="text-align:left;margin:4px 0">Suggested for ${esc(m.slot)} · ${isWeekend(state.date) ? 'weekend' : 'weekday'}</div>` : ''}
+        ${!toks.length ? `<div class="sub" style="text-align:left;margin:4px 0">Suggested for ${esc(m.slot)} · ${isWeekend(state.date) ? 'weekend' : 'weekday'}</div>` : foods.length ? `<div class="mine-head">⭐ Your foods</div>` : ''}
         ${foods.map(([f]) => { const d = defaultAmount(f, lastQty.get(f.id)), ld = lastDate.get(f.id);
           const cal = nutrFor(f, d.qty, d.unit).cal;
           return `<button class="pick" data-food="${esc(f.id)}"><div class="nm"><div>${esc(f.name)}${f.est ? '<span class="est">EST</span>' : ''}</div>
@@ -754,15 +754,16 @@
   function usdaBlock(m, q, nLocal) {
     if (q.length < 3) return nLocal ? '' : `<div class="empty">No match. Try Quick entry and Claude will look it up.</div>`;
     const u = m._usda && m._usda.q === q ? m._usda : null;
-    if (!u) { if (m._usdaPending !== q) setTimeout(() => usdaSearch(m, q), 0); return `<div class="sub usda-head">From USDA · searching…</div>`; }
+    if (!u) { if (m._usdaPending !== q) setTimeout(() => usdaSearch(m, q), 0); return usdaHead('Searching the USDA food database…'); }
     const mine = new Set(state.data.foods.map(f => (f.name + '|' + (f.brand || '')).toLowerCase()));
     const list = u.foods.filter(x => !mine.has((titleCase(x.name) + '|' + titleCase(x.brand || '')).toLowerCase()));
     m._usdaList = list;
     if (!list.length) return nLocal ? '' : `<div class="empty">No match${u.err ? '' : ' here or in USDA'}. Try Quick entry and Claude will look it up.</div>`;
-    return `<div class="sub usda-head">From USDA</div>` + list.map((x, i) => {
+    return usdaHead('Not in your foods yet · tap one to add it') + `<div class="usda-list">` + list.map((x, i) => {
       const per = x.servingG ? `1 serving${x.servingText ? ' (' + esc(x.servingText) + ')' : ''} · ${r0(x.servingG)} g` : '100 g', cal = x.per100.cal * (x.servingG || 100) / 100;
-      return `<button class="pick usda" data-usda="${i}"><div class="nm"><div>${esc(titleCase(x.name))}</div><small>${x.brand ? `<span class="brand">${esc(titleCase(x.brand))}</span>` : ''}${per}</small></div><div class="cal">${fmt(cal)}</div></button>`; }).join('');
+      return `<button class="pick usda" data-usda="${i}"><div class="nm"><div>${esc(titleCase(x.name))}</div><small>${x.brand ? `<span class="brand">${esc(titleCase(x.brand))}</span>` : ''}${per}</small></div><div class="cal">${fmt(cal)}</div><span class="usda-add">＋</span></button>`; }).join('') + `</div>`;
   }
+  const usdaHead = sub => `<div class="usda-head"><b>🔎 USDA food database</b><span>${esc(sub)}</span></div>`;
   async function usdaSearch(m, q) {
     m._usdaPending = q;
     let res;

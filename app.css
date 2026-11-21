@@ -239,8 +239,6 @@ input, textarea, select { -webkit-user-select: text; user-select: text; }
 .target-line span { color: var(--muted); font-size: .85rem; }
 .target-line .over { color: var(--over); }
 .toggle-sub { display: block; font-size: .78rem; color: var(--muted); font-weight: 400; }
-.usda-head { text-align: left; margin: 14px 0 4px; }
-.pick.usda .nm > div { font-weight: 500; }
 .quick-btns { display: grid; gap: 8px; }
 
 /* Add sheet keeps one height while you type, so the search box doesn't slide around */
@@ -248,3 +246,12 @@ input, textarea, select { -webkit-user-select: text; user-select: text; }
 .sheet.tall .sheet-body { flex: 1; min-height: 0; overscroll-behavior: contain; }
 html.modal-open, html.modal-open body { overflow: hidden; }
 input[type=search] { -webkit-appearance: none; appearance: none; } input[type=search]::-webkit-search-cancel-button { display: none; }
+
+/* Search results: your foods vs the USDA database */
+.mine-head { font-size: .8rem; font-weight: 700; color: var(--green); text-transform: uppercase; letter-spacing: .04em; margin: 6px 0 2px; }
+.usda-head { margin: 18px 0 0; padding: 10px 12px; background: var(--blue); color: #fff; border-radius: 12px 12px 0 0; text-align: left; }
+.usda-head b { display: block; font-size: .95rem; }
+.usda-head span { font-size: .8rem; opacity: .9; }
+.usda-list { border: 2px solid var(--blue); border-top: 0; border-radius: 0 0 12px 12px; background: rgba(59,110,168,.07); padding: 0 8px; margin-bottom: 8px; }
+.usda-list .pick:last-child { border-bottom: 0; }
+.pick .usda-add { flex: 0 0 auto; width: 26px; height: 26px; border-radius: 50%; background: var(--blue); color: #fff; display: grid; place-items: center; font-weight: 700; line-height: 1; }
