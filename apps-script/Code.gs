@@ -216,9 +216,8 @@ function addFood_(p) {
   const id = 'F' + String(max + 1).padStart(5, '0');
   const r = s.getLastRow() + 1;
   s.getRange(r, 1, 1, 15).setValues([[id, f.name, f.brand || '', f.unit, f.per || 1, f.cal, f.pro, f.fib, f.carb, f.fat,
-    f.barcode || '', f.source || 'App', f.est ? 'Yes' : 'No',
-    `=COUNTIF(Log!$D:$D,A${r})`, `=IF(N${r}=0,"",MAXIFS(Log!$A:$A,Log!$D:$D,A${r}))`]]);
-  s.getRange(r, 15).setNumberFormat('yyyy-mm-dd');
+    f.barcode || '', f.source || 'App', f.est ? 'Yes' : 'No', 0, '']]);
+  // Times used / Last used are plain values (formulas slowed the sheet); the app works these out from Log.
   return { ok: true, id };
 }
 
