@@ -97,12 +97,34 @@
         j.servings = prev.servings; j.bodyAll = prev.bodyAll;
         const planned = new Map((prev.log || []).filter(l => l.id && l.planned !== undefined).map(l => [l.id, l.planned]));
         j.log.forEach(l => { if (planned.has(l.id)) l.planned = planned.get(l.id); });
+        const exFlags = new Map((prev.exercise || []).filter(e => e.id).map(e => [e.id, e]));
+        j.exercise.forEach(e => { const o = exFlags.get(e.id); if (o) { if (o.planned !== undefined) e.planned = o.planned; if (o.est) e.est = true; } });
+        j.exLib = prev.exLib;
         state.data = j; persist(); state.error = ''; syncBudgets(); if (!state.modal) render(); else renderSync();
       } // don't overwrite unsynced local changes
-      loadPlanned(); loadBody(); loadServings();
+      loadPlanned(); loadExFlags(); loadExLib(); loadBody(); loadServings();
     } catch (e) { state.error = String(e.message || e); if (state.data) renderSync(); else render(); }
   }
   const persist = () => { save('data', state.data); idx = null; };
+  // Exercise Planned/Estimate flags live in the Exercise tab; read the last 30 days and later
+  async function loadExFlags() {
+    try {
+      const j = await api('read', { tab: 'Exercise', person: PERSON, since: addDays(today(), -30) });
+      const by = new Map(j.rows.filter(r => r.EntryID).map(r => [r.EntryID, r]));
+      state.data.exercise.forEach(e => { const r = e.id && by.get(e.id); if (!r) return;
+        if (r.Planned === 'Yes' || r.Planned === 'No') e.planned = r.Planned === 'Yes';
+        e.est = r.Estimate === 'Yes'; });
+      persist(); if (!state.modal) render();
+    } catch (e) {}
+  }
+  // Shared library of regular exercises (Exercises tab), with a cal/min rate per person
+  async function loadExLib() {
+    try {
+      const j = await api('read', { tab: 'Exercises' });
+      state.data.exLib = j.rows.filter(r => r.Activity).map(r => ({ id: r.ExerciseID, name: String(r.Activity).trim(), rate: Number(r[PERSON + ' cal/min']) || null }));
+      persist(); if (state.modal && state.modal.type === 'ex' && !state.modal.entry && !state.modal.name) renderModal();
+    } catch (e) {}
+  }
   // Planned flags live in the Log tab's Planned column; read today and later via the generic read action
   async function loadPlanned() {
     try {
@@ -130,6 +152,26 @@
     } catch (e) {}
   }
   const isPlanned = l => l.planned === true || (l.planned === undefined && l.date > today());
+  // blank Planned: future rows and the dietitian's 'Lose It! plan' rows count as planned
+  const isPlannedEx = e => e.planned === true || (e.planned === undefined && (e.date > today() || e.source === 'Lose It! plan'));
+  // cal/min for an activity: his last 10 done entries with both minutes and calories, else the library rate
+  function exRate(name) {
+    const k = String(name || '').trim().toLowerCase(); if (!k) return null;
+    const hist = state.data.exercise.filter(e => String(e.name).trim().toLowerCase() === k && e.min > 0 && e.cal > 0 && !e.est && !isPlannedEx(e))
+      .sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0).slice(-10);
+    if (hist.length) return { rate: hist.reduce((a, e) => a + e.cal, 0) / hist.reduce((a, e) => a + e.min, 0), from: `your last ${hist.length}` };
+    const lib = (state.data.exLib || []).find(x => x.name.toLowerCase() === k);
+    return lib && lib.rate ? { rate: lib.rate, from: 'library' } : null;
+  }
+  // activities to pick from: library plus anything in his history, most used lately first
+  function exChoices() {
+    const cnt = new Map(), last = new Map(), names = new Map();
+    const add = n => { const k = String(n || '').trim().toLowerCase(); if (k && !names.has(k)) names.set(k, String(n).trim()); return k; };
+    (state.data.exLib || []).forEach(x => add(x.name));
+    state.data.exercise.forEach(e => { const k = add(e.name); if (!k) return; if (e.date >= addDays(today(), -90)) cnt.set(k, (cnt.get(k) || 0) + 1); if (e.date <= today() && (!last.has(k) || e.date > last.get(k))) last.set(k, e.date); });
+    return [...names.entries()].sort((a, b) => (cnt.get(b[0]) || 0) - (cnt.get(a[0]) || 0) || String(last.get(b[0]) || '').localeCompare(String(last.get(a[0]) || '')) || a[1].localeCompare(b[1]))
+      .map(([k, n]) => ({ name: n, last: last.get(k) }));
+  }
 
   // ---------- derived ----------
   let idx = null; // cached lookups
@@ -351,8 +393,10 @@
     // hidden-slot entries (e.g. old Early Snacks) still show so totals make sense
     const hidden = x.log.filter(l => !visibleSlots().includes(l.meal));
     if (hidden.length) h += `<section class="card"><h2>Other<small>${fmt(hidden.reduce((a, l) => a + l.cal, 0))} cal</small></h2>${hidden.map(l => `<div class="entry"><div class="nm"><div>${esc(l.name)}</div><small>${esc(l.meal)}</small></div><div class="cal">${fmt(l.cal)}</div></div>`).join('')}</section>`;
-    h += `<section class="card"><h2>Exercise<small>${x.burned ? fmt(x.burned) + ' cal' : ''}</small></h2>
-      ${x.ex.map(e => `<button class="entry" style="width:100%;text-align:left" data-ex="${esc(e.id || '')}"><div class="nm"><div>${esc(e.name)}</div><small>${e.min ? r0(e.min) + ' min' : ''} ${esc(e.source || '')}</small></div><div class="cal">${fmt(e.cal)}</div></button>`).join('') || '<div class="empty">No exercise yet</div>'}
+    const exPl = x.ex.filter(isPlannedEx).reduce((a, e) => a + (e.cal || 0), 0);
+    h += `<section class="card"><h2>Exercise<small>${x.burned ? fmt(x.burned) + ' cal' : ''}${exPl ? ` · 🕒 ${fmt(exPl)} planned` : ''}</small></h2>
+      ${x.ex.map((e, i) => `<div class="entry ${isPlannedEx(e) ? 'planned' : ''}" role="button" data-ex="${i}"><div class="nm"><div>${isPlannedEx(e) ? '🕒 ' : ''}${esc(e.name)}${e.est ? '<span class="est">EST</span>' : ''}</div><small>${e.min ? r0(e.min) + ' min' : ''}${isPlannedEx(e) ? ' · planned' : ` ${esc(e.source || '')}`}</small></div><div class="cal">${fmt(e.cal)}</div>
+        ${isPlannedEx(e) && state.date <= today() && e.id ? `<button class="ate-btn" data-exdid="${i}" aria-label="Did it">✓</button>` : ''}</div>`).join('') || '<div class="empty">No exercise yet</div>'}
       <button class="add-line" data-act="addex">+ Add exercise</button></section>`;
     if (waterOn()) h += `<section class="card"><h2>Water</h2><div class="water"><div class="cups">💧 ${r0(x.water)} fl oz</div>
       <button class="btn ghost" data-water="-8">−8</button><button class="btn" data-water="8">+8 oz</button></div></section>`;
@@ -730,17 +774,39 @@
       : `<div class="sub">Older Lose It! entry (before Sep 21). Edit it in the sheet.</div>`}</div>`;
   }
   function quickSheet(m) { return head('Quick entry') + `<div class="sheet-body">${quickForm(m)}</div>`; }
+  function exRateLine(m) {
+    const r = exRate(m.name);
+    if (!r) return '<div class="sub" id="xrate">No rate yet for this activity. Enter both and it will learn.</div>';
+    return `<div class="sub" id="xrate">${m.estField ? `<b class="est-note">${m.estField === 'cal' ? 'Calories' : 'Minutes'} estimated</b> · ` : 'Fill one and the other is estimated · '}${(+r.rate.toFixed(1))} cal/min (${esc(r.from)})</div>`;
+  }
+  const exLabel = (t, on) => `${t}${on ? ' <span class="est">EST</span>' : ''}`;
+  function exForm(m, entry) {
+    const future = state.date > today();
+    return `<div class="qty-row"><div class="field" style="flex:1"><label id="lxmin">${exLabel('Minutes', m.estField === 'min')}</label><input id="xmin" type="number" inputmode="numeric" value="${esc(m.min ?? '')}"></div>
+      <div class="field" style="flex:1"><label id="lxcal">${exLabel('Calories', m.estField === 'cal')}</label><input id="xcal" type="number" inputmode="numeric" value="${esc(m.cal ?? '')}"></div></div>
+      ${exRateLine(m)}
+      ${entry ? '' : `<div class="toggle-row" style="border-top:0"><span>🕒 Planned${future ? '' : ' (not done yet)'}</span><button class="switch ${m.planned ? 'on' : ''}" data-m="xplan"></button></div>`}`;
+  }
   function exSheet(m) {
-    if (m.entry) return head(m.entry.name) + `<div class="sheet-body"><div class="big-cal">${fmt(m.entry.cal)}</div><div class="sub">calories burned</div>
-      ${m.entry.id ? `<div class="qty-row"><div class="field" style="flex:1"><label>Minutes</label><input id="xmin" type="number" inputmode="numeric" value="${esc(m.entry.min ?? '')}"></div>
-        <div class="field" style="flex:1"><label>Calories</label><input id="xcal" type="number" inputmode="numeric" value="${esc(r0(m.entry.cal))}"></div></div>
-        <button class="btn big" data-m="exupd">Save</button><button class="danger" data-m="exdel">Delete exercise</button>` : '<div class="sub">Older imported entry. Edit it in the sheet.</div>'}</div>`;
-    const recent = [...new Set(state.data.exercise.slice(-200).map(x => x.name))].slice(-8).reverse();
-    return head('Add exercise') + `<div class="sheet-body">
-      <div class="field"><label>Activity</label><input id="xname" list="xlist" placeholder="Bicycling"><datalist id="xlist">${recent.map(n => `<option>${esc(n)}</option>`).join('')}</datalist></div>
-      <div class="qty-row"><div class="field" style="flex:1"><label>Minutes</label><input id="xmin" type="number" inputmode="numeric"></div>
-      <div class="field" style="flex:1"><label>Calories</label><input id="xcal" type="number" inputmode="numeric"></div></div>
-      <button class="btn big" data-m="exsave">Add</button></div>`;
+    if (m.entry) {
+      const e = m.entry;
+      if (!e.id) return head(e.name) + `<div class="sheet-body"><div class="big-cal">${fmt(e.cal)}</div><div class="sub">calories burned</div><div class="sub">Older imported entry. Edit it in the sheet.</div></div>`;
+      if (m.name === undefined) Object.assign(m, { name: e.name, min: e.min ?? '', cal: e.cal != null ? r0(e.cal) : '', estField: null, wasEst: !!e.est });
+      const pl = isPlannedEx(e);
+      return head(e.name) + `<div class="sheet-body"><div class="big-cal" id="xbig">${fmt(Number(m.cal) || 0)}</div><div class="sub">${pl ? '🕒 planned · ' : ''}calories burned${e.est ? ' · estimate' : ''}</div>
+        ${state.date <= today() ? (pl ? '<button class="btn big done" data-m="exdid" style="margin-bottom:10px">✓ I did this</button>' : '<button class="btn big ghost" data-m="exreplan" style="margin-bottom:10px">🕒 Move back to planned</button>') : ''}
+        ${exForm(m, true)}
+        <button class="btn big" data-m="exupd">Save</button><button class="danger" data-m="exdel">Delete exercise</button></div>`;
+    }
+    if (m.name) return head(m.name, true) + `<div class="sheet-body">${exForm(m, false)}<button class="btn big" data-m="exsave">Add to ${esc(dayLabel(state.date))}</button></div>`;
+    const q = String(m.q || '').trim().toLowerCase(), all = exChoices();
+    const list = all.filter(x => !q || x.name.toLowerCase().includes(q));
+    const exact = q && all.some(x => x.name.toLowerCase() === q);
+    m._choices = list;
+    return head('Add exercise') + `<div class="sheet-body"><input id="xq" class="search" placeholder="Search or type a new activity" value="${esc(m.q || '')}" autocomplete="off">
+      ${q && !exact ? `<button class="pick" data-xnew="1"><div class="nm"><div>+ ${esc(String(m.q).trim())}</div><small>new activity</small></div></button>` : ''}
+      ${list.map((x, i) => { const r = exRate(x.name); return `<button class="pick" data-xpick="${i}"><div class="nm"><div>${esc(x.name)}</div><small>${x.last ? 'last ' + esc(dayLabel(x.last)) : 'not logged yet'}</small></div><div class="cal" style="font-size:.85rem;color:var(--muted)">${r ? (+r.rate.toFixed(1)) + '/min' : ''}</div></button>`; }).join('')
+      || (q ? '' : '<div class="empty">No activities yet.</div>')}</div>`;
   }
   function mealSheet(m) {
     const g = m.group, off = m.off || [];
@@ -890,7 +956,10 @@
     document.querySelectorAll('[data-entry]').forEach(b => b.onclick = () => {
       const l = (I().logByDate.get(state.date) || []).find(x => entryKey(x) === b.dataset.ekey); if (l) openModal({ type: 'entry', entry: l });
     });
-    document.querySelectorAll('[data-ex]').forEach((b, i) => b.onclick = () => openModal({ type: 'ex', entry: (I().exByDate.get(state.date) || [])[i] }));
+    document.querySelectorAll('[data-ex]').forEach(b => b.onclick = ev => { if (ev.target.closest('[data-exdid]')) return; openModal({ type: 'ex', entry: (I().exByDate.get(state.date) || [])[Number(b.dataset.ex)] }); });
+    document.querySelectorAll('[data-exdid]').forEach(b => b.onclick = ev => { ev.stopPropagation();
+      const e = (I().exByDate.get(state.date) || [])[Number(b.dataset.exdid)]; if (!e) return;
+      markExPlanned(e, false); render(); toast(`${e.name} done`, 'Undo', () => { markExPlanned(e, true); render(); }); });
     document.querySelectorAll('[data-water]').forEach(b => b.onclick = () => setDayFlag({ water: Math.max(0, dayTotals(state.date).water + Number(b.dataset.water)) }));
     const gs = $('#goalsel'); if (gs) gs.onchange = () => savePlan({ 'Weekly goal (lb/week)': Number(gs.value) });
     document.querySelectorAll('[data-prange]').forEach(b => b.onclick = () => { state.progRange = b.dataset.prange; state.progOff = 0; render(); });
@@ -923,6 +992,10 @@
       state.data.profile['Meal slots'] = next.join(', '); persist();
       enqueue('saveSettings', { settings: { 'Meal slots': next.join(', ') } }); render();
     });
+  }
+  function markExPlanned(e, v) {
+    e.planned = v; persist();
+    if (e.id) enqueue('update', { tab: 'Exercise', id: e.id, values: { Planned: v ? 'Yes' : 'No' } });
   }
   function markPlanned(l, v) {
     l.planned = v; persist();
@@ -964,6 +1037,27 @@
     document.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { m.tab = b.dataset.tab; renderModal(); });
     const q = $('#q'); if (q) q.oninput = () => { m.q = q.value; clearTimeout(searchT); searchT = setTimeout(() => { if (state.modal === m) renderModal(); }, 250); };
     const qn = $('#qname'); if (qn) qn.oninput = () => { m.qname = qn.value; };
+    const xq = $('#xq'); if (xq) xq.oninput = () => { m.q = xq.value; clearTimeout(searchT); searchT = setTimeout(() => { if (state.modal !== m) return; renderModal(); const n = $('#xq'); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }, 200); };
+    const pickEx = name => { state.modal = { type: 'ex', name, min: '', cal: '', planned: state.date > today(), back: m }; renderModal(); };
+    document.querySelectorAll('[data-xpick]').forEach(b => b.onclick = () => pickEx(m._choices[Number(b.dataset.xpick)].name));
+    document.querySelectorAll('[data-xnew]').forEach(b => b.onclick = () => pickEx(String(m.q).trim()));
+    // fill the blank one from the rate; a number he typed is never overwritten
+    const xmin = $('#xmin'), xcal = $('#xcal');
+    if (xmin && xcal && m.type === 'ex') {
+      const upd = src => {
+        const r = exRate(m.name);
+        const [mine, other, mk, ok, toOther] = src === 'min' ? [xmin, xcal, 'min', 'cal', v => Math.round(v * r.rate)] : [xcal, xmin, 'cal', 'min', v => Math.round(v / r.rate)];
+        m[mk] = mine.value;
+        if (m.estField === mk) m.estField = null; // he typed over the estimate: it's his number now
+        const v = Number(mine.value);
+        if ((m.estField === ok || other.value === '') && r && v > 0) { m[ok] = String(toOther(v)); other.value = m[ok]; m.estField = ok; }
+        else if (m.estField === ok && !(v > 0)) { m[ok] = ''; other.value = ''; m.estField = null; }
+        $('#xrate').outerHTML = exRateLine(m);
+        $('#lxmin').innerHTML = exLabel('Minutes', m.estField === 'min'); $('#lxcal').innerHTML = exLabel('Calories', m.estField === 'cal');
+        const big = $('#xbig'); if (big) big.textContent = fmt(Number(m.cal) || 0);
+      };
+      xmin.oninput = () => upd('min'); xcal.oninput = () => upd('cal');
+    }
     document.querySelectorAll('[data-food]').forEach(b => b.onclick = () => {
       const f = I().foodById.get(b.dataset.food); const lq = suggestions(m.slot, state.date).lastQty.get(f.id);
       state.modal = { type: 'food', food: f.id, qty: lq ? +Number(lq.qty).toFixed(2) : f.per, unit: lq ? (servingOf(f, lq.unit) ? servingOf(f, lq.unit).unit : canonUnit(lq.unit)) : (servingsFor(f)[0] ? servingsFor(f)[0].unit : canonUnit(f.unit)), slot: m.slot, back: m }; if (!lq && servingsFor(f)[0]) state.modal.qty = 1; renderModal();
@@ -1066,7 +1160,7 @@
       const x = dayTotals(state.date), all = ALL_SLOTS.filter(sl => x.log.some(l => l.meal === sl)), slots = m.slots || all;
       const es = x.log.filter(l => slots.includes(l.meal)).map(l => ({ food: l.food, meal: l.meal, name: l.name, qty: l.qty, unit: l.unit, cal: l.cal, pro: l.pro, fib: l.fib, carb: l.carb, fat: l.fat, est: l.est }));
       if (es.length) addEntries(es, to, true);
-      if (!m.noEx) x.ex.forEach(e => { const n = { id: uid('X'), date: to, name: e.name, min: e.min, cal: e.cal, source: 'Copied' }; state.data.exercise.push(n); enqueue('addExercise', { entry: n, budget: budgetFor(to) }); });
+      if (!m.noEx) x.ex.forEach(e => { const n = { id: uid('X'), date: to, name: e.name, min: e.min, cal: e.cal, source: 'Copied', planned: to > today(), est: !!e.est }; state.data.exercise.push(n); enqueue('addExercise', { entry: n, budget: budgetFor(to) }); enqueue('update', { tab: 'Exercise', id: n.id, values: { Planned: n.planned ? 'Yes' : 'No', Estimate: n.est ? 'Yes' : 'No' } }); });
       ensureLocalDay(to); persist(); closeModal(); render();
       return toast(`Copied ${es.length} item${es.length === 1 ? '' : 's'} to ${dayLabel(to)}`, 'Go there', () => { state.date = to; render(); });
     }
@@ -1088,12 +1182,22 @@
       const l = m.entry; state.data.log = state.data.log.filter(x => x !== l); persist();
       enqueue('deleteLog', { id: l.id }); closeModal(); render(); return toast('Deleted');
     }
+    if (a === 'xplan') { m.planned = !m.planned; return renderModal(); }
     if (a === 'exsave') {
-      const name = ($('#xname').value || '').trim(), cal = Number($('#xcal').value);
-      if (!name || !(cal > 0)) return toast('Activity and calories, please');
-      const e = { id: uid('X'), date: state.date, name, min: Number($('#xmin').value) || null, cal, source: 'Manual' };
+      const name = String(m.name || '').trim(), cal = Number(m.cal), min = Number(m.min) || null;
+      if (!name || !(cal > 0)) return toast('Enter minutes or calories');
+      const est = !!m.estField;
+      const e = { id: uid('X'), date: state.date, name, min, cal, source: 'Manual', est, planned: !!m.planned };
       state.data.exercise.push(e); ensureLocalDay(state.date); persist();
-      enqueue('addExercise', { entry: e, budget: budgetFor(state.date) }); closeModal(); return render();
+      enqueue('addExercise', { entry: e, budget: budgetFor(state.date) });
+      enqueue('update', { tab: 'Exercise', id: e.id, values: { Planned: e.planned ? 'Yes' : 'No', Estimate: est ? 'Yes' : 'No' } });
+      // a new activity with both numbers entered joins the library at his rate
+      const lib = state.data.exLib || [];
+      if (!est && min > 0 && !lib.some(x => x.name.toLowerCase() === name.toLowerCase())) {
+        const nid = 'EX' + uid('').toUpperCase(); lib.push({ id: nid, name, rate: +(cal / min).toFixed(2) }); state.data.exLib = lib; persist();
+        enqueue('append', { tab: 'Exercises', rows: [{ ExerciseID: nid, Activity: name, [PERSON + ' cal/min']: +(cal / min).toFixed(2), Notes: 'Added in app ' + today() }] });
+      }
+      closeModal(); render(); return toast(e.planned ? `${name} planned` : `${name} added`);
     }
     if (a === 'scan') { state.modal = { type: 'scan', back: m }; renderModal(); return startScan(); }
     if (a === 'bcgo') return lookupBarcode($('#bcin').value);
@@ -1113,10 +1217,13 @@
       closeModal(); return toast(`Saved for your ${m.to.toLowerCase()}`);
     }
     if (a === 'exupd') {
-      const e = m.entry, cal = Number($('#xcal').value); if (!(cal >= 0)) return toast('Enter calories');
-      e.cal = cal; e.min = Number($('#xmin').value) || null; persist();
-      enqueue('update', { tab: 'Exercise', id: e.id, values: { Minutes: e.min ?? '', Calories: cal } }); closeModal(); render(); return toast('Saved');
+      const e = m.entry, cal = Number(m.cal); if (m.cal === '' || !(cal >= 0)) return toast('Enter calories');
+      const changed = cal !== r0(e.cal) || (Number(m.min) || null) !== (e.min || null);
+      e.cal = cal; e.min = Number(m.min) || null; if (changed) e.est = !!m.estField; persist();
+      enqueue('update', { tab: 'Exercise', id: e.id, values: { Minutes: e.min ?? '', Calories: cal, Estimate: e.est ? 'Yes' : 'No' } }); closeModal(); render(); return toast('Saved');
     }
+    if (a === 'exdid') { const e = m.entry; markExPlanned(e, false); closeModal(); render(); return toast('Done', 'Undo', () => { markExPlanned(e, true); render(); }); }
+    if (a === 'exreplan') { const e = m.entry; markExPlanned(e, true); closeModal(); render(); return toast('Moved back to planned', 'Undo', () => { markExPlanned(e, false); render(); }); }
     if (a === 'exdel') {
       const e = m.entry; state.data.exercise = state.data.exercise.filter(x => x !== e); persist();
       enqueue('deleteExercise', { id: e.id }); closeModal(); return render();

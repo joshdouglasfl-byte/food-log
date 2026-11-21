@@ -32,6 +32,8 @@ Done: phases 1-2, plan view (Mifflin-St Jeor x1.2 + manual adjustment + weekly g
 - Note: `checkVersion()` and the `visibilitychange` reload were always working; an earlier "bug" came from a web fetch truncating app.js.
 - Tested in headless Chrome (Playwright, /usr/bin/google-chrome) at 390x844 and 820x1180.
 
-## Exercise work (decided 2026-11-21, not built)
-- Regular exercises: new `Exercises` tab (library with cal/min per activity), picker like food, fill the blank of minutes/calories from the rate, labeled as an estimate. Don't change durations Josh enters.
-- Planned exercise: Planned column on Exercise; planned burn COUNTS toward Left like planned food (Days formula unchanged). bootstrap_ needs a Planned flag -> Apps Script redeploy.
+## Exercise work (built 2026-11-21, no redeploy)
+- `Exercises` tab (shared): ExerciseID, Activity, Josh cal/min, Michelle cal/min, Notes; seeded from each person's last 20 entries (dropped Calorie Burn Bonus, HealthKit Workout; Eliptical merged into Elliptical). App adds a new activity with his rate when both numbers are entered.
+- Rate used for estimates: person's last 10 done, non-estimated entries for that activity, else library rate. The field he types is never overwritten; the filled one is marked EST and saved with Estimate = Yes.
+- Exercise tab now has Planned (H) and Estimate (added by gUpdate_). Read via generic `read` (last 30 days), written via generic `update` after `addExercise`. Blank Planned = planned if date > today or Source 'Lose It! plan'.
+- Planned burn counts toward Left like planned food (Days formula unchanged).

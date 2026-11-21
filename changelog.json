@@ -1,9 +1,21 @@
-{"entries": [
-  {"date": "2026-11-21", "version": "20261121111034", "items": [
+{
+ "entries": [
+  {
+   "date": "2026-11-21",
+   "version": "20261121112109",
+   "items": [
     "What's new: this list, opened from the bottom of the Plan tab, with a green dot when there's something you haven't read",
-    "App version now shows right away on a fresh install instead of \"?\""
-  ]},
-  {"date": "2026-11-20", "version": "20261120231155", "items": [
+    "App version now shows right away on a fresh install instead of \"?\"",
+    "Add exercise works like food: pick from your regular activities (most used first), search, or type a new one",
+    "Enter minutes or calories and the other is filled in from your recent rate, marked EST; type both and nothing is estimated",
+    "Plan exercise ahead: it shows with a clock and counts toward today's Left, just like planned food; tap ✓ when you've done it",
+    "Minutes and calories boxes no longer run off the edge on the phone"
+   ]
+  },
+  {
+   "date": "2026-11-20",
+   "version": "20261120231155",
+   "items": [
     "First release: log food by meal, with a daily calorie budget and what's left",
     "Planned vs eaten: plan food ahead with a clock, tap to confirm when you eat it, with undo",
     "Saved meals you can add as separate items, and copy a whole day",
@@ -15,5 +27,7 @@
     "Levels, XP, streaks and badges",
     "Tell my developer and Tell my dietitian buttons",
     "Changes save offline and sync later; the app always loads the latest version"
-  ]}
-]}
+   ]
+  }
+ ]
+}
