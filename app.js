@@ -266,9 +266,10 @@
   // Smart suggestions: how often a food is eaten in this slot, weekday vs weekend, near this hour, recently.
   function suggestions(slot, date) {
     const t = today(), wk = isWeekend(date), hr = new Date().getHours();
-    const score = new Map(), lastQty = new Map();
+    const score = new Map(), lastQty = new Map(), lastDate = new Map();
     for (const l of state.data.log) {
       if (!l.food) continue;
+      if (l.date <= t && !isPlanned(l) && (!lastDate.has(l.food) || l.date > lastDate.get(l.food))) lastDate.set(l.food, l.date);
       const age = Math.max(0, daysBetween(l.date, t));
       let w = Math.exp(-age / 90) * (l.meal === slot ? 3 : 0.25) * (isWeekend(l.date) === wk ? 1.5 : 1);
       if (l.time) { const lh = Number(l.time.slice(0, 2)); if (Math.abs(lh - hr) <= 2) w *= 1.4; }
@@ -276,12 +277,15 @@
       const prev = lastQty.get(l.food);
       if (!prev || prev.date <= l.date) lastQty.set(l.food, { date: l.date, qty: l.qty, unit: l.unit });
     }
-    return { score, lastQty };
+    return { score, lastQty, lastDate };
   }
   function savedMeals() {
     return (state.data.meals || []).map(m => { let items = []; try { items = JSON.parse(m.items || '[]'); } catch (e) {} return { ...m, items }; })
       .filter(m => Array.isArray(m.items) && m.items.length);
   }
+  // The saved meal whose items match these log entries (same foods), if any
+  const mealSig = its => its.map(x => x.food || x.name).sort().join('+');
+  function savedMealFor(items) { const sig = mealSig(items); return savedMeals().find(g => mealSig(g.items) === sig); }
   function pastMeals(slot, date) {
     const t = today(), wk = isWeekend(date), groups = new Map();
     for (const l of state.data.log) {
@@ -386,9 +390,10 @@
       h += `<section class="card"><h2>${slot}<small>${items.length ? fmt(tot) + ' cal' : ''}</small></h2>
         ${items.map(l => `<div class="entry ${isPlanned(l) ? 'planned' : ''}" role="button" data-entry="${esc(l.id || '')}" data-ekey="${esc(entryKey(l))}">
           <div class="nm"><div>${isPlanned(l) ? '🕒 ' : ''}${esc(l.name)}${l.est ? '<span class="est">EST</span>' : ''}</div><small>${esc(qtyText(l))}${isPlanned(l) ? ' · planned' : ''}</small></div><div class="cal">${fmt(l.cal)}</div>
+          ${l.id ? `<button class="swipe-del" data-swdel="${esc(entryKey(l))}">Delete</button>` : ''}
           ${state.date <= today() && (isPlanned(l) || l.id) ? `<button class="ate-btn ${isPlanned(l) ? '' : 'on'}" data-ate="${esc(entryKey(l))}" aria-label="${isPlanned(l) ? 'Ate it' : 'Eaten, tap to move back to planned'}">✓</button>` : ''}</div>`).join('')}
         ${state.date <= today() && items.filter(isPlanned).length > 1 ? `<button class="add-line" data-confirm="${slot}">✓ Ate all ${items.filter(isPlanned).length} planned items</button>` : ''}
-        <div class="meal-actions"><button class="add-line" data-addslot="${slot}">+ Add food</button>${items.length > 1 ? `<button class="link-btn" data-savemeal="${slot}">⭐ Save as meal</button>` : ''}</div></section>`;
+        <div class="meal-actions"><button class="add-line" data-addslot="${slot}">+ Add food</button>${items.length > 1 ? (savedMealFor(items) ? `<span class="saved-meal">⭐ Saved as ${esc(savedMealFor(items).name)}</span>` : `<button class="link-btn" data-savemeal="${slot}">⭐ Save as meal</button>`) : ''}</div></section>`;
     }
     // hidden-slot entries (e.g. old Early Snacks) still show so totals make sense
     const hidden = x.log.filter(l => !visibleSlots().includes(l.meal));
@@ -668,7 +673,7 @@
     const seg = `<div class="seg">${[['foods', 'My foods'], ['meals', 'Meals'], ['quick', 'Quick entry']].map(([k, t]) => `<button class="${m.tab === k ? 'on' : ''}" data-tab="${k}">${t}</button>`).join('')}</div>`;
     let list = '';
     if (m.tab === 'foods') {
-      const { score, lastQty } = suggestions(m.slot, state.date);
+      const { score, lastQty, lastDate } = suggestions(m.slot, state.date);
       const q = (m.q || '').trim().toLowerCase(), toks = q.split(/\s+/).filter(Boolean);
       let foods = state.data.foods;
       if (toks.length) foods = foods.filter(f => { const n = (f.name + ' ' + (f.brand || '')).toLowerCase(); return toks.every(t => n.includes(t)); });
@@ -676,9 +681,10 @@
       foods = foods.map(f => [f, score.get(f.id) || 0]).sort((a, b) => b[1] - a[1] || a[0].name.localeCompare(b[0].name)).slice(0, 60);
       list = `<div class="qty-row"><input id="q" class="search" placeholder="Search your foods" value="${esc(m.q || '')}" autocomplete="off"><button class="btn ghost" style="margin-bottom:8px" data-m="scan">📷 Scan</button></div>
         ${!toks.length ? `<div class="sub" style="text-align:left;margin:4px 0">Suggested for ${esc(m.slot)} · ${isWeekend(state.date) ? 'weekend' : 'weekday'}</div>` : ''}
-        ${foods.map(([f]) => { const lq = lastQty.get(f.id); const qty = lq ? lq.qty : f.per;
+        ${foods.map(([f]) => { const d = defaultAmount(f, lastQty.get(f.id)), ld = lastDate.get(f.id);
+          const cal = nutrFor(f, d.qty, d.unit).cal;
           return `<button class="pick" data-food="${esc(f.id)}"><div class="nm"><div>${esc(f.name)}${f.est ? '<span class="est">EST</span>' : ''}</div>
-          <small>${esc(f.brand ? f.brand + ' · ' : '')}${+Number(qty).toFixed(2)} ${esc(f.unit)}</small></div><div class="cal">${fmt(f.cal / f.per * qty)}</div></button>`; }).join('')
+          <small>${f.brand ? `<span class="brand">${esc(f.brand)}</span>` : ''}${+Number(d.qty).toFixed(2)} ${esc(d.unit)}${ld ? ` · last ${esc(shortDay(ld))}` : ''}</small></div><div class="cal">${fmt(cal)}</div></button>`; }).join('')
         || `<div class="empty">No match. Try Quick entry and Claude will look it up.</div>`}`;
     } else if (m.tab === 'meals') {
       const meals = pastMeals(m.slot, state.date), saved = savedMeals();
@@ -712,6 +718,15 @@
   const servingsFor = f => { const seen = new Set();
     return (state.data.servings || []).filter(x => x.food === f.id && !seen.has(x.unit.toLowerCase()) && seen.add(x.unit.toLowerCase())); };
   const servingOf = (f, unit) => servingsFor(f).find(x => x.unit.toLowerCase() === String(unit || '').toLowerCase().replace(/ \(.*\)$/, ''));
+  // Starting amount for a food: restaurant foods with a known serving open at 1 serving; otherwise last amount used, else a saved serving, else its base unit.
+  function defaultAmount(f, lq) {
+    const svS = servingOf(f, 'Serving');
+    if (f.brand && svS) return { qty: 1, unit: svS.unit, sv: svS };
+    if (lq) { const sv = servingOf(f, lq.unit); return { qty: +Number(lq.qty).toFixed(2), unit: sv ? sv.unit : canonUnit(lq.unit), sv }; }
+    const sv = servingsFor(f)[0];
+    return sv ? { qty: 1, unit: sv.unit, sv } : { qty: f.per, unit: canonUnit(f.unit) };
+  }
+  const shortDay = d => { const n = daysBetween(d, today()); return n === 0 ? 'today' : n === 1 ? 'yesterday' : n < 7 ? `${n} days ago` : parse(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', ...(d.slice(0, 4) !== today().slice(0, 4) ? { year: 'numeric' } : {}) }); };
   function gramsToFoodUnits(f, grams) {
     const fam = familyOf(f.unit);
     if (fam && fam.name === 'weight') return grams / fam.map[fam.unit];
@@ -794,7 +809,7 @@
 
   function foodSheet(m) {
     const f = I().foodById.get(m.food); if (!f) return head('Food', true) + '<div class="sheet-body"><div class="empty">Food not found.</div></div>'; const qty = m.qty;
-    const k = (Number(qty) || 0) / f.per;
+    const k = toFoodUnits(f, qty, m.unit) / f.per;
     return head(f.name, true) + `<div class="sheet-body">
       <div class="big-cal" id="fcal">${fmt(f.cal * k)}</div><div class="sub">calories · ${esc(m.slot)}</div>
       ${unitInfo(f)}
@@ -961,6 +976,29 @@
     } catch (err) { if (e) e.textContent = 'Lookup failed. Check the connection or type it again.'; }
   }
 
+  // ---------- swipe left to delete a log entry ----------
+  function bindSwipe() {
+    document.querySelectorAll('.entry[data-entry]').forEach(el => {
+      if (!el.querySelector('.swipe-del')) return;
+      let x0 = 0, y0 = 0, dx = 0, on = false;
+      el.addEventListener('touchstart', e => { const t = e.touches[0]; x0 = t.clientX; y0 = t.clientY; dx = 0; on = true; }, { passive: true });
+      el.addEventListener('touchmove', e => { if (!on) return; const t = e.touches[0]; dx = t.clientX - x0;
+        if (Math.abs(t.clientY - y0) > Math.abs(dx)) { on = false; return; } }, { passive: true });
+      el.addEventListener('touchend', () => { if (!on) return; on = false;
+        if (dx < -50) { document.querySelectorAll('.entry.swiped').forEach(o => o !== el && o.classList.remove('swiped')); el.classList.add('swiped'); el._swiped = true; setTimeout(() => { el._swiped = false; }, 400); }
+        else if (dx > 40 && el.classList.contains('swiped')) { el.classList.remove('swiped'); el._swiped = true; setTimeout(() => { el._swiped = false; }, 400); } });
+    });
+  }
+  function swipeDelete(key) {
+    const l = (I().logByDate.get(state.date) || []).find(x => entryKey(x) === key); if (!l || !l.id) return;
+    const wasPlanned = isPlanned(l);
+    state.data.log = state.data.log.filter(x => x !== l); persist(); enqueue('deleteLog', { id: l.id }); render();
+    toast(`Deleted ${l.name}`, 'Undo', () => {
+      const copy = { ...l }; delete copy.id; addEntries([copy], l.date, true);
+      if (wasPlanned) { const n = state.data.log[state.data.log.length - 1]; markPlanned(n, true); render(); }
+    });
+  }
+
   // ---------- actions ----------
   function addEntries(entries, date = state.date, quiet) {
     entries.forEach(e => { e.id = uid('L'); e.date = date; e.time = date === today() ? nowHM() : ''; delete e.planned; state.data.log.push(e); });
@@ -998,7 +1036,10 @@
     document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => { state.view = b.dataset.view; if (state.view === 'day') state.date = today(); if (state.view === 'week') state.weekOf = state.date; render(); scrollTo(0, 0); });
     document.querySelectorAll('[data-act]').forEach(b => b.onclick = () => act(b.dataset.act));
     document.querySelectorAll('[data-addslot]').forEach(b => b.onclick = () => openModal({ type: 'add', slot: b.dataset.addslot, tab: 'foods' }));
+    bindSwipe();
+    document.querySelectorAll('[data-swdel]').forEach(b => b.onclick = ev => { ev.stopPropagation(); swipeDelete(b.dataset.swdel); });
     document.querySelectorAll('[data-entry]').forEach(b => b.onclick = () => {
+      if (b.classList.contains('swiped') || b._swiped) { b._swiped = false; b.classList.remove('swiped'); return; }
       const l = (I().logByDate.get(state.date) || []).find(x => entryKey(x) === b.dataset.ekey); if (l) openModal({ type: 'entry', entry: l });
     });
     document.querySelectorAll('[data-ex]').forEach(b => b.onclick = ev => { if (ev.target.closest('[data-exdid]')) return; openModal({ type: 'ex', entry: (I().exByDate.get(state.date) || [])[Number(b.dataset.ex)] }); });
@@ -1109,8 +1150,8 @@
       xmin.oninput = () => upd('min'); xcal.oninput = () => upd('cal');
     }
     document.querySelectorAll('[data-food]').forEach(b => b.onclick = () => {
-      const f = I().foodById.get(b.dataset.food); const lq = suggestions(m.slot, state.date).lastQty.get(f.id);
-      state.modal = { type: 'food', food: f.id, qty: lq ? +Number(lq.qty).toFixed(2) : f.per, unit: lq ? (servingOf(f, lq.unit) ? servingOf(f, lq.unit).unit : canonUnit(lq.unit)) : (servingsFor(f)[0] ? servingsFor(f)[0].unit : canonUnit(f.unit)), slot: m.slot, back: m }; if (!lq && servingsFor(f)[0]) state.modal.qty = 1; renderModal();
+      const f = I().foodById.get(b.dataset.food); const d = defaultAmount(f, suggestions(m.slot, state.date).lastQty.get(f.id));
+      state.modal = { type: 'food', food: f.id, qty: d.qty, unit: d.unit, slot: m.slot, back: m }; renderModal();
       setTimeout(() => { const i = $('#fqty'); if (i) { i.focus(); i.select(); } }, 50);
     });
     document.querySelectorAll('[data-smeal]').forEach(b => b.onclick = () => {

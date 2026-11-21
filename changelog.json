@@ -2,8 +2,13 @@
  "entries": [
   {
    "date": "2026-11-21",
-   "version": "20261121125317",
+   "version": "20261121151952",
    "items": [
+    "Swipe left on a food in your log to delete it (with Undo)",
+    "Food list shows the restaurant and when you last had each food",
+    "Restaurant foods with a known serving open at 1 serving instead of grams",
+    "A meal you've already saved shows \"Saved as …\" instead of asking again",
+    "Fixed: a food opened in servings showed the wrong calories until you changed the amount",
     "Settings has a new Apple Watch card: the link for Health Auto Export, and the last watch workout received",
     "What's new: this list, opened from the bottom of Settings, with a green dot when there's something you haven't read",
     "App version now shows right away on a fresh install instead of \"?\"",
