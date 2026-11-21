@@ -116,14 +116,16 @@
     let age = d.getFullYear() - b.getFullYear(); if (d.getMonth() < b.getMonth() || (d.getMonth() === b.getMonth() && d.getDate() < b.getDate())) age--;
     const kg = wt * 0.453592, cm = h * 2.54;
     const bmr = 10 * kg + 6.25 * cm - 5 * age + (sex.startsWith('f') ? -161 : 5);   // Mifflin-St Jeor
-    const burn = bmr * 1.2;                                                          // sedentary
+    const sedentary = bmr * 1.2;                                                     // sedentary
+    const manual = Number(p['Manual adjustment (cal)']) || 0;                        // like Lose It!'s manual adjustment
+    const burn = sedentary + manual;
     const goal = Number(p['Weekly goal (lb/week)']) || 0;
     const daily = goal * 3500 / 7;
     const wkndExtra = Number(p['Weekend adjustment (cal)']) || 0;
     const wkdayAdj = Number(p['Weekday adjustment (cal)']) || 0;
     const base = burn + daily;
     const target = base + (isWeekend(date) ? wkndExtra : wkdayAdj);
-    return { age, wt, h, sex, bmr, burn, goal, daily, base, wkndExtra, wkdayAdj, target: Math.round(target) };
+    return { age, wt, h, sex, bmr, sedentary, manual, burn, goal, daily, base, wkndExtra, wkdayAdj, target: Math.round(target) };
   }
   // Past days keep the budget they had; today and later use the plan (a dietitian Plan target overrides).
   function budgetFor(date) {
@@ -351,17 +353,18 @@
     const rows = days.map((d, i) => {
       const t = tg[i], adj = t - Math.round(pl.base);
       return `<div class="plan-row"><div class="d">${parse(d).toLocaleDateString(undefined, { weekday: 'short' })}</div>
-        <div class="plan-bar"><div class="burn" style="width:${pct(pl.burn)}%"></div><div class="tgt ${t > pl.burn ? 'gain' : ''}" style="width:${pct(t)}%"></div></div>
+        <div class="plan-bar"><div class="burn" style="width:${pct(pl.burn)}%"></div><div class="tgt ${t > pl.burn + 1 ? 'gain' : ''}" style="width:${pct(t)}%"></div></div>
         <div class="v">${fmt(t)}${adj ? `<small>${adj > 0 ? '+' : '−'}${fmt(Math.abs(adj))}</small>` : ''}</div></div>`;
     }).join('');
     const wk = tg.reduce((a, b) => a + b, 0);
     return `<section class="card"><h2>My plan</h2>
-      <p class="plan-txt">At ${pl.age}, ${Math.floor(pl.h / 12)}′${Math.round(pl.h % 12)}″ and ${pl.wt} lb, your sedentary burn is <b>${fmt(pl.burn)}</b> cal a day.
+      <p class="plan-txt">At ${pl.age}, ${Math.floor(pl.h / 12)}′${Math.round(pl.h % 12)}″ and ${pl.wt} lb, your sedentary burn is ${pl.manual ? `${fmt(pl.sedentary)}, and with your ${pl.manual < 0 ? '−' : '+'}${fmt(Math.abs(pl.manual))} manual adjustment it’s <b>${fmt(pl.burn)}</b>` : `<b>${fmt(pl.burn)}</b>`} cal a day.
       Your plan is to <b>${goalTxt}</b>${pl.daily ? `, ${pl.daily < 0 ? 'minus' : 'plus'} ${fmt(Math.abs(pl.daily))} a day` : ''}, for a daily target of <b>${fmt(pl.base)}</b>.</p>
       ${rows}
-      <div class="plan-legend"><span><i class="burn"></i>Sedentary burn</span><span><i class="tgt"></i>Target</span></div>
+      <div class="plan-legend"><span><i class="burn"></i>${pl.manual ? 'Adjusted burn' : 'Sedentary burn'}</span><span><i class="tgt"></i>Target</span></div>
       <div class="sub" style="margin:6px 0 0">Week total ${fmt(wk)} cal · exercise adds to each day · this week’s days already logged keep their budget</div>
       <div class="field" style="margin-top:12px"><label>Weekly goal</label><select id="goalsel">${[...new Set([...GOALS, pl.goal])].sort((a, b) => a - b).map(g => `<option value="${g}" ${g === pl.goal ? 'selected' : ''}>${g === 0 ? 'Maintain' : (g < 0 ? 'Lose ' : 'Gain ') + Math.abs(g) + ' lb a week'}</option>`).join('')}</select></div>
+      <div class="field"><label>Manual adjustment to burn</label><select id="mansel">${[...new Set([-500, -400, -300, -250, -200, -150, -100, -50, 0, 50, 100, 200, 300, pl.manual])].sort((a, b) => a - b).map(v => `<option value="${v}" ${v === pl.manual ? 'selected' : ''}>${v ? (v > 0 ? '+' : '−') + Math.abs(v) + ' cal a day' : 'None'}</option>`).join('')}</select></div>
       <div class="field"><label>Weekend extra (weekdays give it back)</label><select id="wkndsel">${[0, 100, 150, 200, 250, 300, 400, 500].map(v => `<option value="${v}" ${v === pl.wkndExtra ? 'selected' : ''}>${v ? '+' + v + ' Sat & Sun, −' + Math.round(v * 2 / 5) + ' Mon–Fri' : 'Same every day'}</option>`).join('')}</select></div>
     </section>`;
   }
@@ -516,6 +519,7 @@
     document.querySelectorAll('[data-ex]').forEach((b, i) => b.onclick = () => openModal({ type: 'ex', entry: (I().exByDate.get(state.date) || [])[i] }));
     document.querySelectorAll('[data-water]').forEach(b => b.onclick = () => setDayFlag({ water: Math.max(0, dayTotals(state.date).water + Number(b.dataset.water)) }));
     const gs = $('#goalsel'); if (gs) gs.onchange = () => savePlan({ 'Weekly goal (lb/week)': Number(gs.value) });
+    const ms = $('#mansel'); if (ms) ms.onchange = () => savePlan({ 'Manual adjustment (cal)': Number(ms.value) });
     const wk = $('#wkndsel'); if (wk) wk.onchange = () => { const v = Number(wk.value); savePlan({ 'Weekend adjustment (cal)': v, 'Weekday adjustment (cal)': -Math.round(v * 2 / 5) }); };
     document.querySelectorAll('[data-tell]').forEach(b => b.onclick = () => openModal({ type: 'tell', to: b.dataset.tell }));
     document.querySelectorAll('[data-goto]').forEach(b => b.onclick = () => { state.date = b.dataset.goto; state.view = 'day'; render(); });
