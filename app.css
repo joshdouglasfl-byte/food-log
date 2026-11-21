@@ -239,3 +239,5 @@ input, textarea, select { -webkit-user-select: text; user-select: text; }
 .target-line span { color: var(--muted); font-size: .85rem; }
 .target-line .over { color: var(--over); }
 .toggle-sub { display: block; font-size: .78rem; color: var(--muted); font-weight: 400; }
+.usda-head { text-align: left; margin: 14px 0 4px; }
+.pick.usda .nm > div { font-weight: 500; }

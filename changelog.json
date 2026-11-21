@@ -2,8 +2,9 @@
  "entries": [
   {
    "date": "2026-11-21",
-   "version": "20261121172601",
+   "version": "20261121173110",
    "items": [
+    "Searching your foods also shows matches from the USDA food database; tap one to add it to your foods",
     "Quick entries are saved to your foods, so next time you can just search and tap them",
     "New switch in Settings > Extras: show today's progress against your original target, with exercise as extra on top",
     "Barcode scanning is much better: sharper camera, a stronger reader and a box to aim at",

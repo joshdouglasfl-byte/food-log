@@ -24,7 +24,7 @@ function handle_(p) {
   if (key && p.key !== key) return out_({ ok: false, error: 'unauthorized' });
   const lock = LockService.getScriptLock();
   try {
-    if (p.action !== 'bootstrap') lock.waitLock(20000);
+    if (p.action !== 'bootstrap' && p.action !== 'foodSearch') lock.waitLock(20000);   // search reads nothing from the sheet
     switch (p.action) {
       case 'bootstrap': return out_(bootstrap_(p.person));
       case 'addLog': return out_(addLog_(p));
@@ -37,6 +37,7 @@ function handle_(p) {
       case 'saveSettings': return out_(saveSettings_(p));
       case 'addFeedback': return out_(addFeedback_(p));
       case 'haeWorkouts': return out_(haeWorkouts_(p));
+      case 'foodSearch': return out_(foodSearch_(p));
       // generic actions: new features use these, so the script rarely needs redeploying
       case 'read': return out_(gRead_(p));
       case 'append': return out_(gAppend_(p));
@@ -425,4 +426,44 @@ function gDelete_(p) {
   const hit = s.getRange(2, ic + 1, Math.max(s.getLastRow() - 1, 1), 1).createTextFinder(String(p.id)).matchEntireCell(true).findNext();
   if (hit) s.deleteRow(hit.getRow());
   return { ok: true };
+}
+
+
+// ---------- USDA FoodData Central search (type-ahead in the food list) ----------
+// The key lives in Script Property FDC_KEY (never in the repo). Results cached 6 h per query.
+const FDC_NUM = { cal: ['208', '957', '958'], pro: ['203'], fib: ['291'], carb: ['205'], fat: ['204'] };
+function foodSearch_(p) {
+  const q = String(p.q || '').trim().toLowerCase().slice(0, 60);
+  if (q.length < 3) return { ok: true, foods: [] };
+  const cache = CacheService.getScriptCache(), ck = 'fdc:' + q;
+  const hit = cache.get(ck); if (hit) return { ok: true, foods: JSON.parse(hit), cached: true };
+  const key = PropertiesService.getScriptProperties().getProperty('FDC_KEY') || 'DEMO_KEY';
+  const res = UrlFetchApp.fetch('https://api.nal.usda.gov/fdc/v1/foods/search?api_key=' + encodeURIComponent(key), {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    payload: JSON.stringify({ query: q, pageSize: 25, dataType: ['Foundation', 'SR Legacy', 'Survey (FNDDS)', 'Branded'] }) });
+  if (res.getResponseCode() !== 200) return { ok: false, error: 'USDA search ' + res.getResponseCode() };
+  const foods = fdcFoods_(JSON.parse(res.getContentText()).foods || []);
+  try { cache.put(ck, JSON.stringify(foods), 21600); } catch (e) {}
+  return { ok: true, foods: foods };
+}
+function fdcFoods_(list) {
+  const out = [], seen = {};
+  list.forEach(function (f) {
+    const n = {};
+    (f.foodNutrients || []).forEach(function (x) {
+      const num = String(x.nutrientNumber || '');
+      Object.keys(FDC_NUM).forEach(function (k) {
+        if (n[k] == null && FDC_NUM[k].indexOf(num) >= 0 && (k !== 'cal' || String(x.unitName).toUpperCase() === 'KCAL')) n[k] = Number(x.value);
+      });
+    });
+    if (n.cal == null) return;
+    const brand = String(f.brandName || f.brandOwner || '').trim();
+    const name = String(f.description || '').trim();
+    const sig = (name + '|' + brand).toLowerCase(); if (seen[sig]) return; seen[sig] = 1;
+    const su = String(f.servingSizeUnit || '').toLowerCase();
+    out.push({ fdcId: f.fdcId, name: name, brand: brand, type: f.dataType, per100: n,   // per 100 g (or ml)
+      servingG: (su === 'g' || su === 'grm' || su === 'ml' || su === 'mlt') && f.servingSize ? Number(f.servingSize) : null,
+      servingText: f.householdServingFullText || '' });
+  });
+  return out.slice(0, 15);
 }

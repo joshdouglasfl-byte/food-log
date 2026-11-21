@@ -721,8 +721,8 @@
         ${foods.map(([f]) => { const d = defaultAmount(f, lastQty.get(f.id)), ld = lastDate.get(f.id);
           const cal = nutrFor(f, d.qty, d.unit).cal;
           return `<button class="pick" data-food="${esc(f.id)}"><div class="nm"><div>${esc(f.name)}${f.est ? '<span class="est">EST</span>' : ''}</div>
-          <small>${f.brand ? `<span class="brand">${esc(f.brand)}</span>` : ''}${+Number(d.qty).toFixed(2)} ${esc(d.unit)}${ld ? ` · last ${esc(shortDay(ld))}` : ''}</small></div><div class="cal">${fmt(cal)}</div></button>`; }).join('')
-        || `<div class="empty">No match. Try Quick entry and Claude will look it up.</div>`}`;
+          <small>${f.brand ? `<span class="brand">${esc(f.brand)}</span>` : ''}${+Number(d.qty).toFixed(2)} ${esc(d.unit)}${ld ? ` · last ${esc(shortDay(ld))}` : ''}</small></div><div class="cal">${fmt(cal)}</div></button>`; }).join('')}
+        ${usdaBlock(m, q, foods.length)}`;
     } else if (m.tab === 'meals') {
       const meals = pastMeals(m.slot, state.date), saved = savedMeals();
       list = (saved.length ? `<div class="sub" style="text-align:left;margin:4px 0">Saved meals</div>` + saved.map((g, i) => `<button class="pick" data-smeal="${i}"><div class="nm"><div>⭐ ${esc(g.name)}</div>
@@ -734,6 +734,43 @@
       return head('Add to ' + dayLabel(state.date)) + `<div class="sheet-body">${pick}${seg}${quickForm(m)}</div>`;
     }
     return head('Add to ' + dayLabel(state.date)) + `<div class="sheet-body">${pick}${seg}${list}</div>`;
+  }
+  // ---------- USDA FoodData Central type-ahead (via the sheet script's foodSearch, which holds the key) ----------
+  const titleCase = t => t === t.toUpperCase() ? t.toLowerCase().replace(/\b([a-z])/g, c => c.toUpperCase()) : t;
+  function usdaBlock(m, q, nLocal) {
+    if (q.length < 3) return nLocal ? '' : `<div class="empty">No match. Try Quick entry and Claude will look it up.</div>`;
+    const u = m._usda && m._usda.q === q ? m._usda : null;
+    if (!u) { if (m._usdaPending !== q) setTimeout(() => usdaSearch(m, q), 0); return `<div class="sub usda-head">From USDA · searching…</div>`; }
+    const mine = new Set(state.data.foods.map(f => (f.name + '|' + (f.brand || '')).toLowerCase()));
+    const list = u.foods.filter(x => !mine.has((titleCase(x.name) + '|' + titleCase(x.brand || '')).toLowerCase()));
+    m._usdaList = list;
+    if (!list.length) return nLocal ? '' : `<div class="empty">No match${u.err ? '' : ' here or in USDA'}. Try Quick entry and Claude will look it up.</div>`;
+    return `<div class="sub usda-head">From USDA</div>` + list.map((x, i) => {
+      const per = x.servingG ? `1 serving${x.servingText ? ' (' + esc(x.servingText) + ')' : ''} · ${r0(x.servingG)} g` : '100 g', cal = x.per100.cal * (x.servingG || 100) / 100;
+      return `<button class="pick usda" data-usda="${i}"><div class="nm"><div>${esc(titleCase(x.name))}</div><small>${x.brand ? `<span class="brand">${esc(titleCase(x.brand))}</span>` : ''}${per}</small></div><div class="cal">${fmt(cal)}</div></button>`; }).join('');
+  }
+  async function usdaSearch(m, q) {
+    m._usdaPending = q;
+    let res;
+    try { const j = await api('foodSearch', { q }); res = { q, foods: j.foods || [] }; } catch (e) { res = { q, foods: [], err: true }; }
+    if (m._usdaPending !== q) return;
+    m._usda = res;
+    if (state.modal === m && (m.q || '').trim().toLowerCase() === q) renderModal();
+  }
+  function addUsdaFood(x, m) {
+    const per = v => v == null ? null : Math.round(v / 100 * 1000) / 1000;
+    const f = { id: uid('tmp'), tempId: '', name: titleCase(x.name), brand: titleCase(x.brand || ''), unit: 'Gram', per: 1,
+      cal: per(x.per100.cal), pro: per(x.per100.pro), fib: per(x.per100.fib), carb: per(x.per100.carb), fat: per(x.per100.fat),
+      barcode: '', source: 'USDA ' + x.fdcId, est: false };
+    f.tempId = f.id; f.defQty = x.servingG || 100;
+    state.data.foods.push(f); enqueue('addFood', { food: { ...f } });
+    if (x.servingG) {
+      const sv = { food: f.id, unit: 'Serving', grams: x.servingG, id: uid('S') };
+      (state.data.servings = state.data.servings || []).push(sv);
+      enqueue('append', { tab: 'Servings', headers: ['FoodID', 'Unit', 'Grams', 'Note', 'EntryID'], rows: [{ FoodID: f.id, Unit: 'Serving', Grams: sv.grams, Note: 'USDA serving' + (x.servingText ? ' (' + x.servingText + ')' : ''), EntryID: sv.id }] });
+    }
+    persist();
+    state.modal = { type: 'food', food: f.id, qty: x.servingG ? 1 : 100, unit: x.servingG ? 'Serving' : 'Gram', slot: m.slot || defaultSlot(), back: m }; renderModal();
   }
   function quickForm(m) {
     return `<div class="field"><label>What did you eat?</label><input id="qname" placeholder="e.g. chicken burrito, Mexican place" value="${esc(m.qname || '')}"></div>
@@ -1254,6 +1291,7 @@
       };
       xmin.oninput = () => upd('min'); xcal.oninput = () => upd('cal');
     }
+    document.querySelectorAll('[data-usda]').forEach(b => b.onclick = () => addUsdaFood(m._usdaList[Number(b.dataset.usda)], m));
     document.querySelectorAll('[data-food]').forEach(b => b.onclick = () => {
       const f = I().foodById.get(b.dataset.food); const d = defaultAmount(f, suggestions(m.slot, state.date).lastQty.get(f.id));
       state.modal = { type: 'food', food: f.id, qty: d.qty, unit: d.unit, slot: m.slot, back: m }; renderModal();
