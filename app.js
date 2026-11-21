@@ -688,7 +688,13 @@
 
   // ---------- modals ----------
   function openModal(m) { state.modal = m; renderModal(); }
-  function closeModal() { stopScan(); state.modal = null; const o = $('#overlay'); if (o) o.remove(); render(); }
+  function closeModal() { stopScan(); state.modal = null; const o = $('#overlay'); if (o) o.remove(); document.documentElement.classList.remove('modal-open'); render(); }
+  // Keep the sheet inside the visible area when the iPhone keyboard is up (visualViewport shrinks; vh doesn't)
+  function fitOverlay() {
+    const o = $('#overlay'), vv = window.visualViewport; if (!o || !vv) return;
+    o.style.top = vv.offsetTop + 'px'; o.style.height = vv.height + 'px'; o.style.bottom = 'auto';
+  }
+  if (window.visualViewport) { visualViewport.addEventListener('resize', fitOverlay); visualViewport.addEventListener('scroll', fitOverlay); }
   function renderModal() {
     let o = $('#overlay');
     if (!o) { o = document.createElement('div'); o.id = 'overlay'; o.className = 'overlay'; document.body.appendChild(o);
@@ -696,9 +702,17 @@
     const m = state.modal;
     const body = m.type === 'add' ? addSheet(m) : m.type === 'food' ? foodSheet(m) : m.type === 'entry' ? entrySheet(m)
       : m.type === 'quick' ? quickSheet(m) : m.type === 'ex' ? exSheet(m) : m.type === 'meal' ? mealSheet(m) : m.type === 'tell' ? tellSheet(m) : m.type === 'scan' ? scanSheet(m) : m.type === 'sched' ? schedSheet(m) : m.type === 'savemeal' ? saveMealSheet(m) : m.type === 'copy' ? copySheet(m) : m.type === 'news' ? newsSheet(m) : m.type === 'coach' ? coachSheet(m) : '';
+    // While searching, swap only the results so the search box (and the iPhone keyboard) stay put
+    if (m.type === 'add' && o._m === m && o._tab === m.tab && o._slot === m.slot && $('#addres') && $('#q')) {
+      const tmp = document.createElement('div'); tmp.innerHTML = body;
+      const nr = tmp.querySelector('#addres');
+      if (nr) { $('#addres').replaceWith(nr); bindModal(); return; }
+    }
+    o._m = m; o._tab = m.tab; o._slot = m.slot;
     const keepSearch = $('#q') && document.activeElement === $('#q');
     const pos = keepSearch ? $('#q').selectionStart : null;
-    o.innerHTML = `<div class="sheet">${body}</div>`;
+    o.innerHTML = `<div class="sheet ${m.type === 'add' ? 'tall' : ''}">${body}</div>`;
+    document.documentElement.classList.add('modal-open'); fitOverlay();
     bindModal();
     if (keepSearch && $('#q')) { $('#q').focus(); try { $('#q').setSelectionRange(pos, pos); } catch (e) {} }
   }
@@ -716,13 +730,13 @@
       if (toks.length) foods = foods.filter(f => { const n = (f.name + ' ' + (f.brand || '')).toLowerCase(); return toks.every(t => n.includes(t)); });
       else foods = foods.filter(f => score.has(f.id));
       foods = foods.map(f => [f, score.get(f.id) || 0]).sort((a, b) => b[1] - a[1] || a[0].name.localeCompare(b[0].name)).slice(0, 60);
-      list = `<div class="qty-row"><input id="q" class="search" placeholder="Search your foods" value="${esc(m.q || '')}" autocomplete="off"><button class="btn ghost" style="margin-bottom:8px" data-m="scan">📷 Scan</button></div>
+      list = `<div class="qty-row"><input id="q" class="search" type="search" enterkeyhint="search" placeholder="Search your foods" value="${esc(m.q || '')}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"><button class="btn ghost" style="margin-bottom:8px" data-m="scan">📷 Scan</button></div><div id="addres">
         ${!toks.length ? `<div class="sub" style="text-align:left;margin:4px 0">Suggested for ${esc(m.slot)} · ${isWeekend(state.date) ? 'weekend' : 'weekday'}</div>` : ''}
         ${foods.map(([f]) => { const d = defaultAmount(f, lastQty.get(f.id)), ld = lastDate.get(f.id);
           const cal = nutrFor(f, d.qty, d.unit).cal;
           return `<button class="pick" data-food="${esc(f.id)}"><div class="nm"><div>${esc(f.name)}${f.est ? '<span class="est">EST</span>' : ''}</div>
           <small>${f.brand ? `<span class="brand">${esc(f.brand)}</span>` : ''}${+Number(d.qty).toFixed(2)} ${esc(d.unit)}${ld ? ` · last ${esc(shortDay(ld))}` : ''}</small></div><div class="cal">${fmt(cal)}</div></button>`; }).join('')}
-        ${usdaBlock(m, q, foods.length)}`;
+        ${usdaBlock(m, q, foods.length)}</div>`;
     } else if (m.tab === 'meals') {
       const meals = pastMeals(m.slot, state.date), saved = savedMeals();
       list = (saved.length ? `<div class="sub" style="text-align:left;margin:4px 0">Saved meals</div>` + saved.map((g, i) => `<button class="pick" data-smeal="${i}"><div class="nm"><div>⭐ ${esc(g.name)}</div>

@@ -2,8 +2,9 @@
  "entries": [
   {
    "date": "2026-11-21",
-   "version": "20261121174332",
+   "version": "20261121174710",
    "items": [
+    "Adding food is steadier on the phone: the search box no longer jumps while you type, and autocorrect is off in it",
     "Quick entry asks whether you're sure of the calories or your dietitian can adjust them",
     "Searching your foods also shows matches from the USDA food database; tap one to add it to your foods",
     "Quick entries are saved to your foods, so next time you can just search and tap them",

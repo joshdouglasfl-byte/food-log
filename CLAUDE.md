@@ -72,3 +72,7 @@ Done: phases 1-2, plan view (Mifflin-St Jeor x1.2 + manual adjustment + weekly g
 ## USDA type-ahead (2026-11-21; deployed and FDC_KEY set by Josh, confirmed working)
 - Code.gs `foodSearch` {q}: POST to FoodData Central /foods/search (Foundation, SR Legacy, Survey, Branded; pageSize 25) with Script Property `FDC_KEY` (DEMO_KEY fallback, 30/h), returns up to 15 {fdcId, name, brand, type, per100 {cal, pro, fib, carb, fat}, servingG, servingText}, deduped, kcal only, cached 6 h per query; skips the script lock. Key never goes in the repo (USDA deactivates keys found online).
 - App: in My foods, after 3+ letters a "From USDA" section lists results not already in Foods (name|brand match, ALL-CAPS names title-cased). Tap = addFood (Unit Gram, per-gram values, Source `USDA <fdcId>`) + Servings 'Serving' row when the serving is in g/ml, then the food sheet. Before the redeploy the call fails quietly and the section hides.
+
+## Add sheet steadiness (2026-11-21)
+- While searching, renderModal swaps only `#addres` (results) when the same add modal/tab/slot is open, so the `#q` input node, focus and iOS keyboard stay put; the add sheet is `.sheet.tall` (fixed 92% height) so it doesn't resize as results change; the overlay follows `visualViewport` (top/height) so the sheet sits above the keyboard; `html.modal-open` stops the page behind from scrolling.
+- Search input: type=search, enterkeyhint=search, autocorrect/autocapitalize/spellcheck off. iOS's form bar (up/down/✓ above the keyboard) can't be hidden from a web page.
