@@ -774,9 +774,10 @@
   }
   function quickForm(m) {
     return `<div class="field"><label>What did you eat?</label><input id="qname" placeholder="e.g. chicken burrito, Mexican place" value="${esc(m.qname || '')}"></div>
-      <div class="field"><label>Rough calories (optional)</label><input id="qcal" type="number" inputmode="numeric" placeholder="Leave blank and Claude will estimate"></div>
-      <button class="btn big" data-m="quicksave">Add as estimate</button>
-      <div class="sub" style="margin-top:10px">It's saved to your foods so you can pick it next time. Claude fills in the details overnight.</div>`;
+      <div class="field"><label>Calories (optional)</label><input id="qcal" type="number" inputmode="numeric" placeholder="Blank = your dietitian estimates"></div>
+      <div class="quick-btns"><button class="btn big" data-m="quicksure">✓ Add · I'm sure of the calories</button>
+      <button class="btn big ghost" data-m="quicksave">Add · my dietitian can adjust</button></div>
+      <div class="sub" style="margin-top:10px">It's saved to your foods so you can pick it next time. Your dietitian fills in protein, carbs and fat, and only changes the calories if you let them (or left it blank).</div>`;
   }
   // ---------- unit families (convertible units, like Lose It!) ----------
   const FAMILIES = {
@@ -1398,13 +1399,15 @@
       ensureLocalDay(to); persist(); closeModal(); render();
       return toast(`Copied ${es.length} item${es.length === 1 ? '' : 's'} to ${dayLabel(to)}`, 'Go there', () => { state.date = to; render(); });
     }
-    if (a === 'quicksave') {
+    if (a === 'quicksave' || a === 'quicksure') {
       const name = ($('#qname').value || '').trim(); if (!name) return toast('Type what you ate');
       const cal = Number($('#qcal').value) || 0;
+      if (a === 'quicksure' && !cal) return toast('Enter the calories, or let your dietitian estimate');
+      const est = a !== 'quicksure';   // Estimate No = sure of the calories: the dietitian never changes them
       // Saved as a food (Source 'Quick entry', Estimate Yes) so it shows in search next time; the dietitian fills in details overnight.
-      let f = state.data.foods.find(x => x.name.trim().toLowerCase() === name.toLowerCase() && x.unit === 'Serving' && Number(x.cal || 0) === cal);
+      let f = state.data.foods.find(x => x.name.trim().toLowerCase() === name.toLowerCase() && x.unit === 'Serving' && Number(x.cal || 0) === cal && !!x.est === est);
       if (!f) {
-        f = { id: uid('tmp'), tempId: '', name, brand: '', unit: 'Serving', per: 1, cal, pro: null, fib: null, carb: null, fat: null, barcode: '', source: 'Quick entry', est: true };
+        f = { id: uid('tmp'), tempId: '', name, brand: '', unit: 'Serving', per: 1, cal, pro: null, fib: null, carb: null, fat: null, barcode: '', source: 'Quick entry', est };
         f.tempId = f.id; state.data.foods.push(f); enqueue('addFood', { food: { ...f } }); persist();
       }
       closeModal(); return addEntries([entryFromFood(f, 1, m.slot || defaultSlot(), 'Serving')]);
