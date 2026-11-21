@@ -265,25 +265,47 @@
   const qtyText = l => `${+Number(l.qty || 0).toFixed(2)} ${l.unit || ''}`.trim();
 
   const weekStart = s => { const d = parse(s); const off = (d.getDay() + 6) % 7; d.setDate(d.getDate() - off); return ymd(d); };
+  // Average daily food over the last 28 logged days before today (for unplanned days in the projection)
+  function recentAvg() {
+    const t = today(); let sum = 0, n = 0;
+    for (let i = 1; i <= 60 && n < 28; i++) {
+      const d = addDays(t, -i), x = dayTotals(d);
+      if (x.log.length) { sum += x.eaten; n++; }
+    }
+    return n ? sum / n : budgetFor(t);
+  }
   function weekView() {
-    const ws = weekStart(state.weekOf), t = today();
-    let tot = 0, rows = '';
+    const ws = weekStart(state.weekOf), t = today(), avg = recentAvg();
+    let tot = 0, proj = 0, assumed = [], anyPast = false, rows = '';
     for (let i = 0; i < 7; i++) {
       const d = addDays(ws, i), x = dayTotals(d), cap = x.budget + x.burned;
-      const has = x.log.length > 0, future = d > t;
-      if (has && !future) tot += x.left;
-      const w = cap > 0 ? Math.min(100, x.eaten / cap * 100) : 0;
-      rows += `<button class="week-row ${d === t ? 'today' : ''}" style="width:100%;text-align:left" data-goto="${d}">
-        <div class="d">${parse(d).toLocaleDateString(undefined, { weekday: 'short' })}<small>${parse(d).getDate()}</small></div>
-        <div class="bar" style="margin:0"><div class="fill ${x.left < 0 ? 'over' : ''}" style="width:${has ? w : 0}%"></div></div>
-        <div class="v ${has ? (x.left < 0 ? 'over' : 'under') : ''}">${has ? (x.left < 0 ? '+' : '−') + fmt(Math.abs(x.left)) : future ? '' : '—'}</div></button>`;
+      const has = x.log.length > 0, future = d > t, isToday = d === t;
+      let val = null, kind = '';
+      if (!future && has) { tot += x.left; anyPast = true; val = x.left; kind = 'actual'; }
+      if (future || (isToday && !has)) {
+        if (has) { val = x.left; kind = 'planned'; }
+        else { val = x.budget + x.burned - avg; kind = 'assumed'; assumed.push(parse(d).toLocaleDateString(undefined, { weekday: 'short' })); }
+      }
+      if (val !== null) proj += val;
+      const eaten = kind === 'assumed' ? avg : x.eaten;
+      const w = cap > 0 ? Math.min(100, eaten / cap * 100) : 0;
+      const sign = v => (v < 0 ? '+' : '−') + fmt(Math.abs(v));
+      rows += `<button class="week-row ${isToday ? 'today' : ''} ${kind === 'planned' || kind === 'assumed' ? 'proj' : ''}" style="width:100%;text-align:left" data-goto="${d}">
+        <div class="d">${parse(d).toLocaleDateString(undefined, { weekday: 'short' })}<small>${kind === 'planned' ? 'planned' : kind === 'assumed' ? 'avg' : parse(d).getDate()}</small></div>
+        <div class="bar" style="margin:0"><div class="fill ${val !== null && val < 0 ? 'over' : ''} ${kind === 'assumed' ? 'ghost' : ''}" style="width:${val !== null ? w : 0}%"></div></div>
+        <div class="v ${val === null ? '' : val < 0 ? 'over' : 'under'}">${val !== null ? sign(val) : '—'}</div></button>`;
     }
-    const over = tot < 0;
-    return `<section class="card"><div class="sub" style="margin:0">This week so far</div>
-      <div class="wk-total ${over ? 'over' : 'under'}">${fmt(Math.abs(tot))} cal ${over ? 'over' : 'under'}</div></section>
-      <section class="card">${rows}<div class="sub" style="margin:8px 0 0">Right column: calories under (−) or over (+) each day</div></section>`;
+    const weekOver = ws > t, weekPast = addDays(ws, 6) < t;
+    const box = (label, v) => `<div class="sub" style="margin:0">${label}</div><div class="wk-total ${v < 0 ? 'over' : 'under'}">${fmt(Math.abs(v))} cal ${v < 0 ? 'over' : 'under'}</div>`;
+    let top = '';
+    if (weekPast) top = box('Week total', tot);
+    else {
+      top = `<div class="wk-split">${weekOver ? '' : `<div>${box('So far', tot)}</div>`}<div>${box('Projected by Sunday', proj)}</div></div>`;
+      if (assumed.length) top += `<div class="sub" style="margin:8px 0 0">Assuming ${fmt(avg)} cal a day (your recent average) for ${assumed.join(', ')}, with nothing planned yet</div>`;
+    }
+    return `<section class="card">${top}</section>
+      <section class="card">${rows}<div class="sub" style="margin:8px 0 0">Under (−) or over (+) each day. Faded rows are projected.</div></section>`;
   }
-
   function settingsView() {
     const rw = rewards(), vs = visibleSlots();
     return `<section class="card"><h2>Level ${rw.level}<small>${fmt(rw.xp)} XP</small></h2>

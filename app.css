@@ -128,3 +128,7 @@ nav.tabs .plus { width: 58px; height: 58px; border-radius: 50%; background: var(
 .tell { display: flex; justify-content: center; gap: 18px; margin: 22px 0 6px; }
 .tell button { color: var(--muted); font-size: .85rem; text-decoration: underline; text-underline-offset: 3px; }
 textarea { font: inherit; }
+.wk-split { display: flex; gap: 10px; } .wk-split > div { flex: 1; text-align: center; }
+.wk-split .wk-total { font-size: 1.3rem; }
+.week-row.proj .d, .week-row.proj .v { opacity: .6; }
+.bar .fill.ghost { opacity: .45; }
