@@ -24,7 +24,7 @@ Done: phases 1-2, plan view (Mifflin-St Jeor x1.2 + manual adjustment + weekly g
 ## Open
 - Barcode scan confirmed working on Josh's phone 2026-11-20.
 - Michelle's dietitian: drafted 2026-11-21 as `michelle-dietitian` (lives in her Claude) on top of the shared `food-log-sheet` skill, which now holds the sheet layout, budget math and writing rules (loseit-dietitian references it instead of repeating them). Josh's dietitian logs Michelle's Workout Buddy calories into Exercise (Person Michelle, no Lose It! mirror). Waiting on Michelle to upload the skills and add her nightly task.
-- Michelle's Cal AI history import: not started.
+- Michelle's Cal AI history import: dropped (2026-11-21, little data there).
 
 ## Done 2026-11-21
 - Change log: `changelog.json` + "What's new" line in the About card (Settings tab), fetched only when opened; dot until read (`newsSeen`/`latestNews` in localStorage). Every push adds an entry in the same commit as the version.json bump.
@@ -38,7 +38,7 @@ Done: phases 1-2, plan view (Mifflin-St Jeor x1.2 + manual adjustment + weekly g
 - Exercise tab now has Planned (H) and Estimate (added by gUpdate_). Read via generic `read` (last 30 days), written via generic `update` after `addExercise`. Blank Planned = planned if date > today or Source 'Lose It! plan'.
 - Planned burn counts toward Left like planned food (Days formula unchanged).
 - Settings tab (view 'prefs', ⚙️) replaced the Sync nav button: Sync card, Meal sections, Extras, About. Plan (view 'settings') keeps plan, progress, level, badges.
-- Removed the + nav button 2026-11-21 (Josh may revisit as a quick-add: Food by time of day / Scan / Exercise, for today). The 'add' act handler is still in app.js.
+- Removed the + nav button 2026-11-21; quick-add idea dropped (Josh, 2026-11-21). The 'add' act handler is still in app.js.
 - Progress card: Weight / Fat mass toggle (localStorage progMetric). Goals in Profiles: 'Fat mass goal (lb)' + 'Goal date', 'Weight goal (lb)' + 'Weight goal date' (columns P:Q added 2026-11-21).
 
 ## Apple Watch workouts (2026-11-21; needs one redeploy)
@@ -50,3 +50,9 @@ Done: phases 1-2, plan view (Mifflin-St Jeor x1.2 + manual adjustment + weekly g
 - Swipe left on a log entry reveals Delete (bindSwipe/swipeDelete; Undo re-adds via addLog). Food list: restaurant tag + "last <day>" (from the 365-day log). defaultAmount(): restaurant food with a Servings 'Serving' row opens at 1 serving. Day view shows "Saved as <meal>" when a slot's foods match a saved meal. foodSheet's first calorie figure now converts units (toFoodUnits).
 - Foods brands filled 2026-11-21: 62 from names, 9 from always-co-logged restaurant; F00591 "French Fries, Medium" (128 g) left without a brand (used at both Whataburger and McDonald's); new F01616 McDonald's World Famous Fries, Medium (320 cal, US posted).
 - 2026-11-21: Food_Log and Workout Buddy sheets switched from America/Los_Angeles to America/New_York (Code.gs reads TZ from the sheet; date-only values are TZ-free serials, so stored dates didn't move). HAE still uses each workout's own local time.
+
+## Coach notes (2026-11-21)
+- Coach Notes tab (Date, Time, Person, From, Message, Status New/Read, EntryID): dietitian messages, read via generic `read` after load (`loadCoach`), shown as a "From your dietitian" card at the top of today (unread only, last 3) with Got it (queued generic `update` Status = Read) and Reply (Tell my dietitian). "📬 Coach notes" link under the tell buttons lists them all.
+- Michelle's dietitian (michelle-dietitian skill) and trainer run in Josh's Claude for now; nightly tasks reply through Coach Notes. Her goals come from her reply to Josh's starter email ("Your dietitian and trainer"); the CNGOAL note marks that step done.
+- Settings > Michelle's setup link (Josh only): shares `michelle/?k=<key>`.
+- Restaurant foods: 102 of 109 are already per Serving/Each/Piece, so no extra Servings rows needed.
