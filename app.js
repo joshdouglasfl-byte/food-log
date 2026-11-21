@@ -301,9 +301,10 @@
       const items = x.log.filter(l => l.meal === slot);
       const tot = items.reduce((a, l) => a + (l.cal || 0), 0);
       h += `<section class="card"><h2>${slot}<small>${items.length ? fmt(tot) + ' cal' : ''}</small></h2>
-        ${items.map(l => `<button class="entry ${isPlanned(l) ? 'planned' : ''}" style="width:100%;text-align:left" data-entry="${esc(l.id || '')}" data-ekey="${esc(entryKey(l))}">
-          <div class="nm"><div>${isPlanned(l) ? '🕒 ' : ''}${esc(l.name)}${l.est ? '<span class="est">EST</span>' : ''}</div><small>${esc(qtyText(l))}${isPlanned(l) ? ' · planned' : ''}</small></div><div class="cal">${fmt(l.cal)}</div></button>`).join('')}
-        ${state.date <= today() && items.some(isPlanned) ? `<button class="add-line" data-confirm="${slot}">✓ Ate it as planned</button>` : ''}
+        ${items.map(l => `<div class="entry ${isPlanned(l) ? 'planned' : ''}" role="button" data-entry="${esc(l.id || '')}" data-ekey="${esc(entryKey(l))}">
+          <div class="nm"><div>${isPlanned(l) ? '🕒 ' : ''}${esc(l.name)}${l.est ? '<span class="est">EST</span>' : ''}</div><small>${esc(qtyText(l))}${isPlanned(l) ? ' · planned' : ''}</small></div><div class="cal">${fmt(l.cal)}</div>
+          ${isPlanned(l) && state.date <= today() ? `<button class="ate-btn" data-ate="${esc(entryKey(l))}" aria-label="Ate it">✓</button>` : ''}</div>`).join('')}
+        ${state.date <= today() && items.filter(isPlanned).length > 1 ? `<button class="add-line" data-confirm="${slot}">✓ Ate all ${items.filter(isPlanned).length} planned items</button>` : ''}
         <button class="add-line" data-addslot="${slot}">+ Add food</button></section>`;
     }
     // hidden-slot entries (e.g. old Early Snacks) still show so totals make sense
@@ -751,6 +752,11 @@
     const fd = $('#fdate'); if (fd) fd.onchange = () => savePlan({ 'Goal date': fd.value });
     const ms = $('#mansel'); if (ms) ms.onchange = () => savePlan({ 'Manual adjustment (cal)': Number(ms.value) });
     const wk = $('#wkndsel'); if (wk) wk.onchange = () => { const v = Number(wk.value); savePlan({ 'Weekend adjustment (cal)': v, 'Weekday adjustment (cal)': -Math.round(v * 2 / 5) }); };
+    document.querySelectorAll('[data-ate]').forEach(b => b.onclick = ev => {
+      ev.stopPropagation();
+      const l = (I().logByDate.get(state.date) || []).find(x => entryKey(x) === b.dataset.ate); if (!l) return;
+      markPlanned(l, false); render(); toast(`${l.name} confirmed`, 'Undo', () => { markPlanned(l, true); render(); });
+    });
     document.querySelectorAll('[data-confirm]').forEach(b => b.onclick = () => {
       const es = (I().logByDate.get(state.date) || []).filter(l => l.meal === b.dataset.confirm && isPlanned(l));
       es.forEach(l => markPlanned(l, false)); render();

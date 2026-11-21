@@ -176,3 +176,6 @@ b.ok { color: var(--green); } b.bad { color: var(--over); }
 .unit-fixed { color: var(--muted); font-weight: 600; }
 .fracs { display: flex; gap: 6px; margin-top: 8px; }
 .fracs .btn { flex: 1; padding: 9px 0; font-size: 1.05rem; }
+.entry[role=button] { cursor: pointer; }
+.ate-btn { width: 40px; height: 40px; border-radius: 50%; background: var(--gold); color: #fff; font-weight: 800; font-size: 1.1rem; flex: none; }
+.entry.planned .ate-btn { opacity: 1; }
