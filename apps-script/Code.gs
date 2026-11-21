@@ -242,9 +242,9 @@ function addExercise_(p) {
 // Watch workout name -> Food Log activity. Names not listed are kept as the watch names them.
 const HAE_ACTIVITY = {
   'Traditional Strength Training': 'Weight Lifting', 'Functional Strength Training': 'Weight Lifting',
-  'Outdoor Cycle': 'Bicycling', 'Indoor Cycle': 'Bicycling', 'Cycling': 'Bicycling',
-  'Golf': 'Golf', 'Outdoor Walk': 'Walking', 'Indoor Walk': 'Walking', 'Walking': 'Walking',
-  'Elliptical': 'Elliptical', 'Outdoor Run': 'Run neighborhood', 'Running': 'Run neighborhood',
+  'Outdoor Cycle': 'Bicycling', 'Indoor Cycle': 'Bicycling', 'Outdoor Cycling': 'Bicycling', 'Indoor Cycling': 'Bicycling', 'Cycling': 'Bicycling',
+  'Golf': 'Golf', 'Outdoor Walk': 'Walking', 'Indoor Walk': 'Walking', 'Outdoor Walking': 'Walking', 'Indoor Walking': 'Walking', 'Walking': 'Walking',
+  'Elliptical': 'Elliptical', 'Outdoor Run': 'Run neighborhood', 'Outdoor Running': 'Run neighborhood', 'Running': 'Run neighborhood',
   'Core Training': 'Core Fusion', 'Bowling': 'Bowling', 'Fishing': 'Fishing'
 };
 /** Health Auto Export REST payload {data:{workouts:[...]}} -> Exercise rows (Source 'Apple Watch', id AW-<start>). Repeats are skipped. */
@@ -252,19 +252,40 @@ function haeWorkouts_(p) {
   if (p.person !== 'Josh' && p.person !== 'Michelle') return { ok: false, error: 'person must be Josh or Michelle' };
   const ws = (p.hae && p.hae.data && p.hae.data.workouts) || [];
   let added = 0, skipped = 0;
+  const notes = [];
   ws.forEach(w => {
     const start = haeDate_(w.start), end = haeDate_(w.end);
     const cal = Math.round(haeKcal_(w.activeEnergyBurned) || haeKcal_(w.activeEnergy) || 0);
+    const raw = String(w.name || '').trim();
+    notes.push(`${raw} | ${w.start} | ${w.end} | ${w.duration} | ${cal}`);
     if (!start || cal <= 0) { skipped++; return; }
     const secs = Number(w.duration) || (end ? (end - start) / 1000 : 0);
-    const id = 'AW-' + Utilities.formatDate(start, TZ, 'yyyyMMddHHmm');
-    const name = HAE_ACTIVITY[String(w.name || '').trim()] || String(w.name || 'Workout').trim();
+    const local = haeLocal_(w.start, start);   // the workout's own local date/time (not the sheet's time zone)
+    const id = 'AW-' + local.stamp;
+    const name = HAE_ACTIVITY[raw] || raw || 'Workout';
     if (findRowById_(TABS.exercise, 'EntryID', id)) { skipped++; return; }
-    addExercise_({ person: p.person, entry: { id, date: Utilities.formatDate(start, TZ, 'yyyy-MM-dd'), name,
+    addExercise_({ person: p.person, entry: { id, date: local.date, name,
       min: Math.max(1, Math.round(secs / 60)), cal, source: 'Apple Watch' } });
     added++;
   });
+  haeLog_(p.person, ws.length, added, notes);
   return { ok: true, received: ws.length, added, skipped };
+}
+// Date and yyyyMMddHHmm as written in the workout's own time ("2026-11-21 08:09:00 -0500"), else in Eastern time
+function haeLocal_(s, d) {
+  const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+  if (m) return { date: `${m[1]}-${m[2]}-${m[3]}`, stamp: m[1] + m[2] + m[3] + m[4] + m[5] };
+  return { date: Utilities.formatDate(d, 'America/New_York', 'yyyy-MM-dd'), stamp: Utilities.formatDate(d, 'America/New_York', 'yyyyMMddHHmm') };
+}
+// Troubleshooting: one row per Health Auto Export post in HAE_Log (kept to the last 200)
+function haeLog_(person, n, added, notes) {
+  try {
+    const ss = SpreadsheetApp.getActive();
+    const s = ss.getSheetByName('HAE_Log') || ss.insertSheet('HAE_Log');
+    if (s.getLastRow() === 0) s.appendRow(['Received', 'Person', 'Workouts', 'Added', 'Name | start | end | duration | kcal']);
+    s.appendRow([Utilities.formatDate(new Date(), 'America/New_York', 'yyyy-MM-dd HH:mm:ss'), person, n, added, notes.join('\n').slice(0, 45000)]);
+    if (s.getLastRow() > 201) s.deleteRows(2, s.getLastRow() - 201);
+  } catch (e) {}
 }
 // "2026-11-21 10:05:00 -0500" (or ISO) -> Date
 function haeDate_(s) {
