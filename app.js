@@ -890,6 +890,7 @@
     }
     render();
   }
+  let searchT;
   function bindModal() {
     const m = state.modal; if (!m) return;
     document.querySelectorAll('[data-m]').forEach(b => b.onclick = () => modalAct(b.dataset.m));
@@ -898,7 +899,7 @@
     const xi = $('#xtra'); if (xi) xi.onchange = () => { if (Number(xi.value) > 0) { m.extra = Number(xi.value); renderModal(); } };
     document.querySelectorAll('[data-mslot]').forEach(b => b.onclick = () => { m.slot = b.dataset.mslot; renderModal(); });
     document.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { m.tab = b.dataset.tab; renderModal(); });
-    const q = $('#q'); if (q) q.oninput = () => { m.q = q.value; renderModal(); };
+    const q = $('#q'); if (q) q.oninput = () => { m.q = q.value; clearTimeout(searchT); searchT = setTimeout(() => { if (state.modal === m) renderModal(); }, 250); };
     const qn = $('#qname'); if (qn) qn.oninput = () => { m.qname = qn.value; };
     document.querySelectorAll('[data-food]').forEach(b => b.onclick = () => {
       const f = I().foodById.get(b.dataset.food); const lq = suggestions(m.slot, state.date).lastQty.get(f.id);

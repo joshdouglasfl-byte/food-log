@@ -4,7 +4,7 @@
   --r: 16px; font-size: 17px;
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-html, body { margin: 0; background: var(--bg); color: var(--ink);
+html, body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; margin: 0; background: var(--bg); color: var(--ink);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif; }
 body { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
 button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; }
@@ -194,3 +194,4 @@ b.ok { color: var(--green); } b.bad { color: var(--over); }
 .vline { position: absolute; left: 0; right: 0; border-top: 2px dashed rgba(31,42,36,.4); z-index: 1; pointer-events: none; }
 .vline span { position: absolute; left: 0; top: -17px; font-size: .7rem; color: var(--muted); background: var(--card); padding: 0 3px; }
 .plan-legend i.hi { background: var(--gold); } .plan-legend i.avgl { background: none; border-top: 2px dashed rgba(31,42,36,.45); height: 0; }
+input, textarea, select { -webkit-user-select: text; user-select: text; }
