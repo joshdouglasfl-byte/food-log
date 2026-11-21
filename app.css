@@ -179,3 +179,5 @@ b.ok { color: var(--green); } b.bad { color: var(--over); }
 .entry[role=button] { cursor: pointer; }
 .ate-btn { width: 40px; height: 40px; border-radius: 50%; background: var(--gold); color: #fff; font-weight: 800; font-size: 1.1rem; flex: none; }
 .entry.planned .ate-btn { opacity: 1; }
+.save-sv { display: flex; gap: 8px; margin-top: 8px; }
+.save-sv input { flex: 1; min-width: 0; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); font-size: 1rem; }

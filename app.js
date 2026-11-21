@@ -69,6 +69,8 @@
     d.foods.forEach(f => { if (f.id === tmp) f.id = real; });
     d.log.forEach(l => { if (l.food === tmp) l.food = real; });
     state.queue.forEach(q => (q.body.entries || []).forEach(e => { if (e.food === tmp) e.food = real; }));
+    state.queue.forEach(q => (q.body.rows || []).forEach(r => { if (r.FoodID === tmp) r.FoodID = real; }));
+    (d.servings || []).forEach(x => { if (x.food === tmp) x.food = real; });
     if (state.modal && state.modal.food === tmp) state.modal.food = real;
     persist();
   }
@@ -80,7 +82,7 @@
       const j = await res.json();
       if (!j.ok) throw new Error(j.error);
       if (state.queue.length) return; // don't overwrite unsynced local changes
-      state.data = j; persist(); state.error = ''; syncBudgets(); render(); loadPlanned(); loadBody();
+      state.data = j; persist(); state.error = ''; syncBudgets(); render(); loadPlanned(); loadBody(); loadServings();
     } catch (e) { state.error = String(e.message || e); if (state.data) renderSync(); else render(); }
   }
   const persist = () => { save('data', state.data); idx = null; };
@@ -91,6 +93,13 @@
       const flag = new Map(j.rows.filter(r => r.EntryID).map(r => [r.EntryID, r.Planned === 'Yes']));
       state.data.log.forEach(l => { if (l.id && flag.has(l.id)) l.planned = flag.get(l.id); });
       persist(); render();
+    } catch (e) {}
+  }
+  async function loadServings() {
+    try {
+      const j = await api('read', { tab: 'Servings' });
+      state.data.servings = j.rows.filter(r => r.FoodID && Number(r.Grams) > 0).map(r => ({ food: r.FoodID, unit: String(r.Unit || 'Serving'), grams: Number(r.Grams), id: r.EntryID }));
+      persist();
     } catch (e) {}
   }
   async function loadBody() {
@@ -551,8 +560,18 @@
   const canonUnit = u => UNIT_ALIAS[String(u || '').toLowerCase().trim()] || u;
   function familyOf(u) { const c = canonUnit(u); for (const [k, m] of Object.entries(FAMILIES)) if (m[c]) return { name: k, map: m, unit: c }; return null; }
   // amount in `unit` expressed in the food's own unit (null if they can't convert)
+  const servingsFor = f => (state.data.servings || []).filter(x => x.food === f.id);
+  const servingOf = (f, unit) => servingsFor(f).find(x => x.unit.toLowerCase() === String(unit || '').toLowerCase().replace(/ \(.*\)$/, ''));
+  function gramsToFoodUnits(f, grams) {
+    const fam = familyOf(f.unit);
+    if (fam && fam.name === 'weight') return grams / fam.map[fam.unit];
+    const own = servingOf(f, f.unit); if (own) return grams / own.grams;
+    const gpu = gramsPerUnitRaw(f); return gpu ? grams / gpu : null;
+  }
   function toFoodUnits(f, qty, unit) {
     if (!unit || canonUnit(unit) === canonUnit(f.unit)) return Number(qty) || 0;
+    const sv = servingOf(f, unit);
+    if (sv) { const v = gramsToFoodUnits(f, (Number(qty) || 0) * sv.grams); if (v != null) return v; }
     const a = familyOf(unit), b = familyOf(f.unit);
     if (!a || !b || a.name !== b.name) return Number(qty) || 0;
     return (Number(qty) || 0) * a.map[a.unit] / b.map[b.unit];
@@ -562,12 +581,21 @@
     return { cal: f.cal * k, pro: n(f.pro), fib: n(f.fib), carb: n(f.carb), fat: n(f.fat) };
   }
   const FRACTIONS = [['¼', .25], ['⅓', 1 / 3], ['½', .5], ['⅔', 2 / 3], ['¾', .75]];
+  function unitOptions(f) {
+    const fam = familyOf(f.unit), sv = servingsFor(f).filter(x => x.unit.toLowerCase() !== String(f.unit).toLowerCase());
+    const opts = fam ? Object.keys(fam.map) : [f.unit];
+    return opts.concat(sv.map(x => x.unit));
+  }
   function amountControls(f, qty, unit, idQ, idU) {
-    const fam = familyOf(f.unit);
-    const sel = fam ? `<select id="${idU}" class="unit-sel">${Object.keys(fam.map).map(u => `<option ${u === canonUnit(unit || f.unit) ? 'selected' : ''}>${u}</option>`).join('')}</select>` : `<span class="unit-fixed">${esc(f.unit)}</span>`;
-    const fr = fam ? '' : `<div class="fracs">${FRACTIONS.map(([t, v]) => `<button class="btn ghost" data-frac="${v}">${t}</button>`).join('')}</div>`;
+    const opts = unitOptions(f), cur = servingOf(f, unit) ? servingOf(f, unit).unit : canonUnit(unit || f.unit);
+    const label = u => { const sv = servingOf(f, u); return sv && u.toLowerCase() !== String(f.unit).toLowerCase() ? `${u} (${sv.grams} g)` : u; };
+    const sel = opts.length > 1 ? `<select id="${idU}" class="unit-sel">${opts.map(u => `<option value="${esc(u)}" ${u === cur ? 'selected' : ''}>${esc(label(u))}</option>`).join('')}</select>` : `<span class="unit-fixed">${esc(f.unit)}</span>`;
+    const curFam = familyOf(cur);
+    const fr = curFam ? '' : `<div class="fracs">${FRACTIONS.map(([t, v]) => `<button class="btn ghost" data-frac="${v}">${t}</button>`).join('')}</div>`;
+    const saveSv = familyOf(f.unit)?.name === 'weight' && !servingsFor(f).length
+      ? `<div class="save-sv"><input id="svg" type="number" inputmode="decimal" placeholder="Serving size in grams"><button class="btn ghost" data-m="savesv">Save serving</button></div>` : '';
     return `<div class="field"><label>Amount</label><div class="stepper"><button class="btn ghost" data-step="-1">−</button><input id="${idQ}" type="number" inputmode="decimal" step="any" value="${esc(+Number(qty).toFixed(2))}"><button class="btn ghost" data-step="1">+</button></div>
-      <div class="unit-row">${sel}</div>${fr}</div>`;
+      <div class="unit-row">${sel}</div>${fr}${saveSv}</div>`;
   }
 
   // ---------- unit insight ----------
@@ -575,6 +603,11 @@
   const normName = n => String(n || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
   // grams in one unit of a food: a weight unit converts directly; otherwise match a gram-based entry of the same food by calories
   function gramsPerUnit(f) {
+    if (!f) return null;
+    const own = servingOf(f, f.unit); if (own) return own.grams;
+    return gramsPerUnitRaw(f);
+  }
+  function gramsPerUnitRaw(f) {
     if (!f) return null;
     const w = WEIGHT_G[String(f.unit || '').toLowerCase()];
     if (w) return w;
@@ -686,7 +719,7 @@
     code = String(code || '').replace(/\D/g, ''); if (!code) return toast('Enter a barcode');
     const m = state.modal, slot = (m.back && m.back.slot) || defaultSlot();
     const known = state.data.foods.find(f => String(f.barcode || '') === code);
-    const open = f => { stopScan(); state.modal = { type: 'food', food: f.id, qty: f.defQty || f.per, slot, back: m.back }; renderModal(); };
+    const open = f => { stopScan(); const sv = servingsFor(f)[0]; state.modal = { type: 'food', food: f.id, qty: sv ? 1 : (f.defQty || f.per), unit: sv ? sv.unit : canonUnit(f.unit), slot, back: m.back }; renderModal(); };
     if (known) return open(known);
     const e = $('#scanmsg'); if (e) e.textContent = 'Looking up ' + code + '…';
     try {
@@ -698,9 +731,15 @@
         cal: per(n['energy-kcal_100g']), pro: per(n.proteins_100g), fib: per(n.fiber_100g), carb: per(n.carbohydrates_100g), fat: per(n.fat_100g),
         barcode: code, source: 'Open Food Facts', est: false };
       f.tempId = f.id; f.defQty = Number(p.serving_quantity) || 100;
-      state.data.foods.push(f); persist();
+      state.data.foods.push(f);
       enqueue('addFood', { food: { ...f } });
-      open(f);
+      if (Number(p.serving_quantity) > 0) {
+        const sv = { food: f.id, unit: 'Serving', grams: Number(p.serving_quantity), id: uid('S') };
+        (state.data.servings = state.data.servings || []).push(sv);
+        enqueue('append', { tab: 'Servings', headers: ['FoodID', 'Unit', 'Grams', 'Note', 'EntryID'], rows: [{ FoodID: f.id, Unit: 'Serving', Grams: sv.grams, Note: 'Open Food Facts serving size', EntryID: sv.id }] });
+      }
+      persist();
+      stopScan(); state.modal = { type: 'food', food: f.id, qty: Number(p.serving_quantity) > 0 ? 1 : 100, unit: Number(p.serving_quantity) > 0 ? 'Serving' : 'Gram', slot, back: m.back }; renderModal();
     } catch (err) { if (e) e.textContent = 'Lookup failed. Check the connection or type it again.'; }
   }
 
@@ -808,7 +847,7 @@
     const qn = $('#qname'); if (qn) qn.oninput = () => { m.qname = qn.value; };
     document.querySelectorAll('[data-food]').forEach(b => b.onclick = () => {
       const f = I().foodById.get(b.dataset.food); const lq = suggestions(m.slot, state.date).lastQty.get(f.id);
-      state.modal = { type: 'food', food: f.id, qty: lq ? +Number(lq.qty).toFixed(2) : f.per, unit: lq && familyOf(lq.unit) ? canonUnit(lq.unit) : canonUnit(f.unit), slot: m.slot, back: m }; renderModal();
+      state.modal = { type: 'food', food: f.id, qty: lq ? +Number(lq.qty).toFixed(2) : f.per, unit: lq ? (servingOf(f, lq.unit) ? servingOf(f, lq.unit).unit : canonUnit(lq.unit)) : (servingsFor(f)[0] ? servingsFor(f)[0].unit : canonUnit(f.unit)), slot: m.slot, back: m }; if (!lq && servingsFor(f)[0]) state.modal.qty = 1; renderModal();
       setTimeout(() => { const i = $('#fqty'); if (i) { i.focus(); i.select(); } }, 50);
     });
     document.querySelectorAll('[data-meal]').forEach(b => b.onclick = () => {
@@ -900,6 +939,13 @@
     }
     if (a === 'scan') { state.modal = { type: 'scan', back: m }; renderModal(); return startScan(); }
     if (a === 'bcgo') return lookupBarcode($('#bcin').value);
+    if (a === 'savesv') {
+      const g = Number($('#svg').value); if (!(g > 0)) return toast('Enter grams for one serving');
+      const f = I().foodById.get(m.food || m.entry?.food), sv = { food: f.id, unit: 'Serving', grams: g, id: uid('S') };
+      (state.data.servings = state.data.servings || []).push(sv); persist();
+      enqueue('append', { tab: 'Servings', headers: ['FoodID', 'Unit', 'Grams', 'Note', 'EntryID'], rows: [{ FoodID: f.id, Unit: 'Serving', Grams: g, Note: 'Set in app', EntryID: sv.id }] });
+      renderModal(); return toast(`Serving saved: ${g} g`);
+    }
     if (a === 'tellsave') {
       const msg = ($('#tellmsg').value || '').trim(); if (!msg) return toast('Type or dictate a message');
       enqueue('append', { tab: 'Feedback', headers: ['Date', 'Time', 'Person', 'For', 'Message', 'Status', 'EntryID'],
