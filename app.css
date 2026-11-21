@@ -12,7 +12,7 @@ input, select { font: inherit; color: inherit; }
 .wrap { max-width: 720px; margin: 0 auto; padding: 12px 14px; }
 
 header.top { position: sticky; top: 0; z-index: 5; background: var(--bg);
-  padding: calc(env(safe-area-inset-top) + 8px) 14px 8px; }
+  padding: calc(env(safe-area-inset-top) + 12px) 14px 8px; box-shadow: 0 1px 0 var(--line); }
 .top-row { max-width: 720px; margin: 0 auto; display: flex; align-items: center; gap: 8px; }
 .top-row h1 { flex: 1; font-size: 1.15rem; margin: 0; text-align: center; font-weight: 650; }
 .icon-btn { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center;
