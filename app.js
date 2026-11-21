@@ -80,10 +80,20 @@
       const j = await res.json();
       if (!j.ok) throw new Error(j.error);
       if (state.queue.length) return; // don't overwrite unsynced local changes
-      state.data = j; persist(); state.error = ''; syncBudgets(); render();
+      state.data = j; persist(); state.error = ''; syncBudgets(); render(); loadPlanned();
     } catch (e) { state.error = String(e.message || e); if (state.data) renderSync(); else render(); }
   }
   const persist = () => { save('data', state.data); idx = null; };
+  // Planned flags live in the Log tab's Planned column; read today and later via the generic read action
+  async function loadPlanned() {
+    try {
+      const j = await api('read', { tab: 'Log', since: today() });
+      const flag = new Map(j.rows.filter(r => r.EntryID).map(r => [r.EntryID, r.Planned === 'Yes']));
+      state.data.log.forEach(l => { if (l.id && flag.has(l.id)) l.planned = flag.get(l.id); });
+      persist(); render();
+    } catch (e) {}
+  }
+  const isPlanned = l => l.planned === true || (l.planned === undefined && l.date > today());
 
   // ---------- derived ----------
   let idx = null; // cached lookups
@@ -276,13 +286,14 @@
       <div><b>${fmt(x.budget)}</b><span>Budget</span></div><div><b>${fmt(x.eaten)}</b><span>Food</span></div>
       <div><b>${fmt(x.burned)}</b><span>Exercise</span></div><div class="left ${over ? 'over' : ''}"><b>${fmt(Math.abs(x.left))}</b><span>${over ? 'Over' : 'Left'}</span></div></div>
       <div class="bar"><div class="fill ${over ? 'over' : ''}" style="width:${pct}%"></div>${x.burned ? `<div class="mark" style="left:${markPct}%"></div>` : ''}</div>
-      <div class="macros"><span>Protein ${r0(x.pro)} g</span><span>Fiber ${r0(x.fib)} g</span></div></section>`;
+      <div class="macros"><span>Protein ${r0(x.pro)} g</span><span>Fiber ${r0(x.fib)} g</span>${x.log.some(isPlanned) ? `<span>🕒 ${fmt(x.log.filter(isPlanned).reduce((a, l) => a + l.cal, 0))} planned</span>` : ''}</div></section>`;
     for (const slot of visibleSlots()) {
       const items = x.log.filter(l => l.meal === slot);
       const tot = items.reduce((a, l) => a + (l.cal || 0), 0);
       h += `<section class="card"><h2>${slot}<small>${items.length ? fmt(tot) + ' cal' : ''}</small></h2>
-        ${items.map(l => `<button class="entry" style="width:100%;text-align:left" data-entry="${esc(l.id || '')}" data-ekey="${esc(entryKey(l))}">
-          <div class="nm"><div>${esc(l.name)}${l.est ? '<span class="est">EST</span>' : ''}</div><small>${esc(qtyText(l))}</small></div><div class="cal">${fmt(l.cal)}</div></button>`).join('')}
+        ${items.map(l => `<button class="entry ${isPlanned(l) ? 'planned' : ''}" style="width:100%;text-align:left" data-entry="${esc(l.id || '')}" data-ekey="${esc(entryKey(l))}">
+          <div class="nm"><div>${isPlanned(l) ? '🕒 ' : ''}${esc(l.name)}${l.est ? '<span class="est">EST</span>' : ''}</div><small>${esc(qtyText(l))}${isPlanned(l) ? ' · planned' : ''}</small></div><div class="cal">${fmt(l.cal)}</div></button>`).join('')}
+        ${state.date <= today() && items.some(isPlanned) ? `<button class="add-line" data-confirm="${slot}">✓ Ate it as planned</button>` : ''}
         <button class="add-line" data-addslot="${slot}">+ Add food</button></section>`;
     }
     // hidden-slot entries (e.g. old Early Snacks) still show so totals make sense
@@ -369,9 +380,69 @@
       <div class="field"><label>Weekend extra (weekdays give it back)</label><select id="wkndsel">${[0, 100, 150, 200, 250, 300, 400, 500].map(v => `<option value="${v}" ${v === pl.wkndExtra ? 'selected' : ''}>${v ? '+' + v + ' Sat & Sun, −' + Math.round(v * 2 / 5) + ' Mon–Fri' : 'Same every day'}</option>`).join('')}</select></div>
     </section>`;
   }
+  // ---------- progress ----------
+  function progressCard() {
+    const p = profile();
+    const goal = Number(p['Fat mass goal (lb)']) || null;
+    const gdate = String(p['Goal date'] || '').slice(0, 10) || null;
+    const body = (state.data.body || []).filter(b => b.weight).slice(-60);
+    const editor = `<div class="qty-row" style="margin-top:12px">
+        <div class="field" style="flex:1"><label>Fat mass goal (lb)</label><input id="fgoal" type="number" inputmode="decimal" step="0.5" value="${goal ?? ''}" placeholder="e.g. 40"></div>
+        <div class="field" style="flex:1"><label>Target date</label><input id="fdate" type="date" value="${gdate ?? ''}"></div></div>`;
+    if (body.length < 3) return `<section class="card"><h2>Progress</h2><div class="empty">Not enough weigh-ins yet.</div>${editor}</section>`;
+    const fat = body.filter(b => b.fatLb);
+    const useFat = fat.length >= 3;
+    const pts = (useFat ? fat : body).map(b => ({ d: b.date, v: useFat ? b.fatLb : b.weight }));
+    // rolling average of the last 7 readings
+    const avg = pts.map((x, i) => { const w = pts.slice(Math.max(0, i - 6), i + 1); return { d: x.d, v: w.reduce((a, b) => a + b.v, 0) / w.length }; });
+    const cur = avg[avg.length - 1].v, t = today();
+    // pace: linear fit over readings in the last 28 days (lb per week)
+    const recent = pts.filter(x => daysBetween(x.d, t) <= 28);
+    let pace = null;
+    if (recent.length >= 3) {
+      const xs = recent.map(r => daysBetween(recent[0].d, r.d)), ys = recent.map(r => r.v);
+      const mx = xs.reduce((a, b) => a + b, 0) / xs.length, my = ys.reduce((a, b) => a + b, 0) / ys.length;
+      const den = xs.reduce((a, x) => a + (x - mx) ** 2, 0);
+      if (den) pace = xs.reduce((a, x, i) => a + (x - mx) * (ys[i] - my), 0) / den * 7;
+    }
+    const weeksLeft = gdate ? Math.max(0, daysBetween(t, gdate) / 7) : null;
+    const toGo = goal != null ? cur - goal : null;
+    const need = goal != null && weeksLeft ? toGo / weeksLeft : null;
+    let proj = null;
+    if (goal != null && pace != null && pace < 0 && toGo > 0) proj = addDays(t, Math.round(toGo / -pace * 7));
+    // chart
+    const W = 340, H = 170, L = 34, R = 8, T = 10, B = 22;
+    const d0 = pts[0].d, dEnd = gdate && gdate > t ? gdate : t;
+    const span = Math.max(1, daysBetween(d0, dEnd));
+    const vals = pts.map(x => x.v).concat(goal != null ? [goal] : []);
+    const lo = Math.floor(Math.min(...vals) - 1), hi = Math.ceil(Math.max(...vals) + 1);
+    const X = d => L + daysBetween(d0, d) / span * (W - L - R), Y = v => T + (hi - v) / (hi - lo) * (H - T - B);
+    const line = a => a.map((x, i) => `${i ? 'L' : 'M'}${X(x.d).toFixed(1)},${Y(x.v).toFixed(1)}`).join(' ');
+    let svg = `<svg viewBox="0 0 ${W} ${H}" class="prog">`;
+    for (let k = 0; k <= 4; k++) { const v = lo + (hi - lo) * k / 4; svg += `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" class="grid"/><text x="${L - 4}" y="${Y(v) + 4}" text-anchor="end" class="ax">${Math.round(v)}</text>`; }
+    svg += pts.map(x => `<circle cx="${X(x.d)}" cy="${Y(x.v)}" r="2" class="raw"/>`).join('');
+    svg += `<path d="${line(avg)}" class="avg"/>`;
+    if (goal != null) {
+      svg += `<line x1="${L}" x2="${W - R}" y1="${Y(goal)}" y2="${Y(goal)}" class="goal"/><text x="${W - R}" y="${Y(goal) - 4}" text-anchor="end" class="ax goalt">goal ${goal}</text>`;
+      if (gdate && gdate > t) svg += `<path d="M${X(t)},${Y(cur)} L${X(gdate)},${Y(goal)}" class="need"/>`;
+      if (pace != null) { const end = gdate && gdate > t ? gdate : addDays(t, 28); svg += `<path d="M${X(t)},${Y(cur)} L${X(end)},${Y(cur + pace * daysBetween(t, end) / 7)}" class="pace"/>`; }
+    }
+    svg += `<text x="${L}" y="${H - 6}" class="ax">${esc(parse(d0).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }))}</text><text x="${W - R}" y="${H - 6}" text-anchor="end" class="ax">${esc(parse(dEnd).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }))}</text></svg>`;
+    const f1 = v => (Math.round(v * 10) / 10).toFixed(1);
+    const status = need == null || pace == null ? '' : (-pace >= need ? '<b class="ok">on pace</b>' : '<b class="bad">behind pace</b>');
+    const lastW = body[body.length - 1].weight;
+    const txt = goal != null
+      ? `${useFat ? 'Fat mass' : 'Weight'} is <b>${f1(cur)} lb</b> (7-reading average), <b>${f1(Math.max(0, toGo))} lb</b> from your ${goal} lb goal.
+         ${need != null ? `To hit it by ${esc(parse(gdate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }))} you need <b>${f1(need)} lb/week</b>.` : 'Set a target date to see the pace you need.'}
+         ${pace != null ? `Your last 4 weeks: <b>${f1(-pace)} lb/week</b> ${pace <= 0 ? 'down' : 'up'}${proj ? `, reaching the goal around <b>${esc(parse(proj).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }))}</b>` : ''}. ${status}` : ''}`
+      : `${useFat ? 'Fat mass' : 'Weight'} is <b>${f1(cur)} lb</b> (7-reading average). Set a goal below to track pace.`;
+    return `<section class="card"><h2>Progress<small>weight ${lastW} lb</small></h2>${svg}
+      <div class="plan-legend"><span><i class="avg"></i>${useFat ? 'Fat mass' : 'Weight'} (avg)</span>${goal != null ? '<span><i class="need"></i>Needed</span><span><i class="pace"></i>Your pace</span>' : ''}</div>
+      <p class="plan-txt" style="margin-top:10px">${txt}</p>${editor}</section>`;
+  }
   function settingsView() {
     const rw = rewards(), vs = visibleSlots();
-    return planCard() + `<section class="card"><h2>Level ${rw.level}<small>${fmt(rw.xp)} XP</small></h2>
+    return planCard() + progressCard() + `<section class="card"><h2>Level ${rw.level}<small>${fmt(rw.xp)} XP</small></h2>
       <div class="level"><div class="ring" style="--p:${rw.pct}"><span>${rw.level}</span></div>
       <div>${fmt(rw.toNext)} XP to level ${rw.level + 1}<br><small style="color:var(--muted)">Streak ${rw.st} days · best ${rw.best}</small></div></div></section>
       <section class="card"><h2>Badges</h2><div class="badges">${rw.badges.map(([e, n, got]) => `<div class="badge ${got ? 'got' : ''}"><span class="e">${e}</span>${esc(n)}</div>`).join('')}</div>
@@ -450,6 +521,7 @@
       ${editable ? `<div class="field"><label>Amount (${esc(l.unit || '')})</label><input id="eqty" type="number" inputmode="decimal" step="any" value="${esc(+Number(l.qty).toFixed(2))}"></div>
         ${!f ? `<div class="field"><label>Calories</label><input id="ecalin" type="number" inputmode="numeric" value="${r0(l.cal)}"></div>` : ''}
         <div class="field"><label>Meal</label><select id="emeal">${ALL_SLOTS.map(s => `<option ${s === l.meal ? 'selected' : ''}>${s}</option>`).join('')}</select></div>
+        ${isPlanned(l) ? '<button class="btn big done" data-m="entryate" style="margin-bottom:10px">✓ I ate this</button>' : ''}
         <button class="btn big" data-m="entrysave">Save</button><button class="danger" data-m="entrydel">Delete entry</button>`
       : `<div class="sub">Imported from Lose It!. Edit older entries in the sheet.</div>`}</div>`;
   }
@@ -532,6 +604,7 @@
     ensureLocalDay(state.date);
     persist();
     enqueue('addLog', { entries: entries.map(e => ({ ...e })), budget: budgetFor(state.date) });
+    if (state.date > today()) entries.forEach(e => markPlanned(e, true));
     render();
     const x = dayTotals(state.date);
     toast(`Added · ${fmt(Math.abs(x.left))} ${x.left < 0 ? 'over' : 'left'}`);
@@ -566,8 +639,14 @@
     document.querySelectorAll('[data-ex]').forEach((b, i) => b.onclick = () => openModal({ type: 'ex', entry: (I().exByDate.get(state.date) || [])[i] }));
     document.querySelectorAll('[data-water]').forEach(b => b.onclick = () => setDayFlag({ water: Math.max(0, dayTotals(state.date).water + Number(b.dataset.water)) }));
     const gs = $('#goalsel'); if (gs) gs.onchange = () => savePlan({ 'Weekly goal (lb/week)': Number(gs.value) });
+    const fg = $('#fgoal'); if (fg) fg.onchange = () => savePlan({ 'Fat mass goal (lb)': fg.value === '' ? '' : Number(fg.value) });
+    const fd = $('#fdate'); if (fd) fd.onchange = () => savePlan({ 'Goal date': fd.value });
     const ms = $('#mansel'); if (ms) ms.onchange = () => savePlan({ 'Manual adjustment (cal)': Number(ms.value) });
     const wk = $('#wkndsel'); if (wk) wk.onchange = () => { const v = Number(wk.value); savePlan({ 'Weekend adjustment (cal)': v, 'Weekday adjustment (cal)': -Math.round(v * 2 / 5) }); };
+    document.querySelectorAll('[data-confirm]').forEach(b => b.onclick = () => {
+      const es = (I().logByDate.get(state.date) || []).filter(l => l.meal === b.dataset.confirm && isPlanned(l));
+      es.forEach(l => markPlanned(l, false)); render(); toast(`${es.length} item${es.length === 1 ? '' : 's'} confirmed`);
+    });
     document.querySelectorAll('[data-tell]').forEach(b => b.onclick = () => openModal({ type: 'tell', to: b.dataset.tell }));
     document.querySelectorAll('[data-goto]').forEach(b => b.onclick = () => { state.date = b.dataset.goto; state.view = 'day'; render(); });
     document.querySelectorAll('[data-slot]').forEach(b => b.onclick = () => {
@@ -577,6 +656,10 @@
       state.data.profile['Meal slots'] = next.join(', '); persist();
       enqueue('saveSettings', { settings: { 'Meal slots': next.join(', ') } }); render();
     });
+  }
+  function markPlanned(l, v) {
+    l.planned = v; persist();
+    if (l.id) enqueue('update', { tab: 'Log', id: l.id, values: { Planned: v ? 'Yes' : 'No' } });
   }
   function savePlan(settings) {
     Object.assign(state.data.profile, settings); persist();
@@ -655,6 +738,7 @@
       else { const ci = $('#ecalin'); l.qty = qty; l.cal = ci ? Number(ci.value) || 0 : l.cal; l.meal = $('#emeal').value; }
       persist(); enqueue('updateLog', { id: l.id, entry: l }); closeModal(); return render();
     }
+    if (a === 'entryate') { markPlanned(m.entry, false); closeModal(); render(); return toast('Confirmed'); }
     if (a === 'entrydel') {
       const l = m.entry; state.data.log = state.data.log.filter(x => x !== l); persist();
       enqueue('deleteLog', { id: l.id }); closeModal(); render(); return toast('Deleted');

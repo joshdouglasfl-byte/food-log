@@ -150,3 +150,15 @@ textarea { font: inherit; }
 .wk-proj.over { color: var(--over); } .wk-proj.under { color: var(--green); }
 /* iPad home-screen app: iPadOS blurs a band below the status bar, so keep the header text below it */
 html.ipad-app header.top { padding-top: 60px; }
+.entry.planned .nm div, .entry.planned .cal { opacity: .55; }
+svg.prog { width: 100%; height: auto; display: block; }
+svg.prog .grid { stroke: #ece7dc; stroke-width: 1; }
+svg.prog .ax { font-size: 10px; fill: var(--muted); }
+svg.prog .raw { fill: var(--green-2); opacity: .3; }
+svg.prog .avg { fill: none; stroke: var(--green); stroke-width: 2.5; }
+svg.prog .goal { stroke: var(--gold); stroke-width: 1.5; stroke-dasharray: 4 4; }
+svg.prog .goalt { fill: var(--gold); font-weight: 600; }
+svg.prog .need { fill: none; stroke: var(--gold); stroke-width: 2; stroke-dasharray: 2 4; }
+svg.prog .pace { fill: none; stroke: var(--blue); stroke-width: 2; stroke-dasharray: 6 4; }
+.plan-legend i.avg { background: var(--green); } .plan-legend i.need { background: var(--gold); } .plan-legend i.pace { background: var(--blue); }
+b.ok { color: var(--green); } b.bad { color: var(--over); }
