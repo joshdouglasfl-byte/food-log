@@ -18,6 +18,9 @@ Done: phases 1-2, plan view (Mifflin-St Jeor x1.2 + manual adjustment + weekly g
 ## At cutover (when Josh says drop Lose It!)
 - Remove the mirror line and Lose It! sections from loseit-dietitian (consider renaming it), drop Lose It! from site-login-check and the morning brief's sign-in line, rename the hourly task.
 
+## Done 2026-11-20 late (2)
+- Saved meals (Meals tab, items JSON; added as separate tickable Log rows), Copy a day (planned if future, exercise Source 'Copied'), Foods N:O formulas pasted as values. Code.gs addFood_ still writes formulas for new rows (change needs redeploy).
+
 ## Open
 - Barcode scan confirmed working on Josh's phone 2026-11-20.
 - Michelle's own dietitian skill (her Claude), not started.
