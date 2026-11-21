@@ -65,3 +65,6 @@ Done: phases 1-2, plan view (Mifflin-St Jeor x1.2 + manual adjustment + weekly g
 
 ## Target first (2026-11-21)
 - Profiles column R `Show target first` (Yes/No; blank = on for Michelle only), toggled in Settings > Extras via `saveSettings`. On: the today card shows Target / Food / +Exercise / Left vs target, plus "N left of your target · M left with exercise". Set: Josh No, Michelle Yes.
+
+## Quick entries become foods (2026-11-21)
+- "Add as estimate" now also adds a Foods row (Unit Serving, Per 1, cal as typed or 0, Source `Quick entry`, Estimate Yes) via `addFood` (temp id swapped on sync) and logs it with that FoodID, so it shows in search/suggestions. Same name + same calories reuses the existing food. The dietitians fill macros (and calories only when 0) nightly; they never change a number the person typed.

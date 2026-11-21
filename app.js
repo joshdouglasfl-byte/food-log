@@ -79,6 +79,7 @@
     d.foods.forEach(f => { if (f.id === tmp) f.id = real; });
     d.log.forEach(l => { if (l.food === tmp) l.food = real; });
     state.queue.forEach(q => (q.body.entries || []).forEach(e => { if (e.food === tmp) e.food = real; }));
+    state.queue.forEach(q => { if (q.body.entry && q.body.entry.food === tmp) q.body.entry.food = real; });
     state.queue.forEach(q => (q.body.rows || []).forEach(r => { if (r.FoodID === tmp) r.FoodID = real; }));
     (d.servings || []).forEach(x => { if (x.food === tmp) x.food = real; });
     if (state.modal && state.modal.food === tmp) state.modal.food = real;
@@ -738,7 +739,7 @@
     return `<div class="field"><label>What did you eat?</label><input id="qname" placeholder="e.g. chicken burrito, Mexican place" value="${esc(m.qname || '')}"></div>
       <div class="field"><label>Rough calories (optional)</label><input id="qcal" type="number" inputmode="numeric" placeholder="Leave blank and Claude will estimate"></div>
       <button class="btn big" data-m="quicksave">Add as estimate</button>
-      <div class="sub" style="margin-top:10px">Claude finds the restaurant's posted numbers (or similar items) and fixes the entry.</div>`;
+      <div class="sub" style="margin-top:10px">It's saved to your foods so you can pick it next time. Claude fills in the details overnight.</div>`;
   }
   // ---------- unit families (convertible units, like Lose It!) ----------
   const FAMILIES = {
@@ -1362,7 +1363,13 @@
     if (a === 'quicksave') {
       const name = ($('#qname').value || '').trim(); if (!name) return toast('Type what you ate');
       const cal = Number($('#qcal').value) || 0;
-      closeModal(); return addEntries([{ food: '', meal: m.slot || defaultSlot(), name, qty: 1, unit: 'Serving', cal, pro: null, fib: null, carb: null, fat: null, est: true }]);
+      // Saved as a food (Source 'Quick entry', Estimate Yes) so it shows in search next time; the dietitian fills in details overnight.
+      let f = state.data.foods.find(x => x.name.trim().toLowerCase() === name.toLowerCase() && x.unit === 'Serving' && Number(x.cal || 0) === cal);
+      if (!f) {
+        f = { id: uid('tmp'), tempId: '', name, brand: '', unit: 'Serving', per: 1, cal, pro: null, fib: null, carb: null, fat: null, barcode: '', source: 'Quick entry', est: true };
+        f.tempId = f.id; state.data.foods.push(f); enqueue('addFood', { food: { ...f } }); persist();
+      }
+      closeModal(); return addEntries([entryFromFood(f, 1, m.slot || defaultSlot(), 'Serving')]);
     }
     if (a === 'entrysave') {
       const l = m.entry, qty = Number($('#eqty').value); if (!(qty > 0)) return toast('Enter an amount');
