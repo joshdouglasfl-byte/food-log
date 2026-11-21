@@ -634,6 +634,7 @@
       <section class="card"><h2>Meal sections</h2>${ALL_SLOTS.map(s => `<div class="toggle-row"><span>${s}</span><button class="switch ${vs.includes(s) ? 'on' : ''}" data-slot="${s}"></button></div>`).join('')}</section>
       <section class="card"><h2>Extras</h2><div class="toggle-row"><span>Track water</span><button class="switch ${waterOn() ? 'on' : ''}" data-act="water"></button></div></section>
       ${watchCard()}
+      ${PERSON === 'Josh' ? `<section class="card"><h2>👩 Michelle's setup link</h2><div class="sub" style="text-align:left;margin:0 0 10px">Open it on her phone or iPad, then Share › Add to Home Screen.</div><button class="btn big" data-act="sharemichelle">Share Michelle's link</button></section>` : ''}
       <section class="card"><h2>About</h2><div class="sub" style="margin:0">App version ${esc(load('version', '?'))} · Data: Food_Log sheet · ${state.data.foods.length.toLocaleString()} foods</div><button class="news-line" data-act="news">What's new${newsUnread() ? '<i class="news-dot" aria-label="unread"></i>' : ''}<span>›</span></button></section>`;
   }
 
@@ -646,6 +647,11 @@
       <div class="sub" style="text-align:left;margin:0 0 10px">Last watch workout received: ${last ? `${esc(dayLabel(last.date))}, ${esc(last.name)}, ${fmt(last.cal)} cal` : 'none yet'}</div>
       <div class="sub" style="text-align:left;margin:0 0 10px">For Health Auto Export: copy this and paste it as the URL of its REST API automation. It's ${esc(PERSON)}'s own link.</div>
       <div class="watch-copy"><button class="btn" data-act="copyhae">Copy Health Auto Export URL</button></div></section>`;
+  }
+  async function shareMichelle() {
+    const link = new URL('../michelle/', location.href).href + '?k=' + encodeURIComponent(load('key', ''));
+    try { if (navigator.share) { await navigator.share({ title: 'Food Log for Michelle', url: link }); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
+    copyText(link, "Michelle's link");
   }
   async function copyText(t, label) {
     try { await navigator.clipboard.writeText(t); toast(`${label} copied`); }
@@ -1133,6 +1139,7 @@
     else if (a === 'news') return openNews();
     else if (a === 'coachnotes') return openModal({ type: 'coach' });
     else if (a === 'copyhae') return copyText(haeUrl(), 'Health Auto Export URL');
+    else if (a === 'sharemichelle') return shareMichelle();
     else if (a === 'refresh') { toast('Syncing…'); return refresh(); }
     else if (a === 'done') {
       setDayFlag({ done: true });
