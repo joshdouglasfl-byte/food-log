@@ -377,7 +377,7 @@
       <div class="sub" style="margin:10px 0 0">XP: 10 per day logged, +10 for done, +15 for done under budget, +25 per week of streak</div></section>
       <section class="card"><h2>Meal sections</h2>${ALL_SLOTS.map(s => `<div class="toggle-row"><span>${s}</span><button class="switch ${vs.includes(s) ? 'on' : ''}" data-slot="${s}"></button></div>`).join('')}</section>
       <section class="card"><h2>Extras</h2><div class="toggle-row"><span>Track water</span><button class="switch ${waterOn() ? 'on' : ''}" data-act="water"></button></div></section>
-      <section class="card"><div class="sub" style="margin:0">Data: Food_Log sheet · ${state.data.foods.length.toLocaleString()} foods · last sync ${esc(new Date(state.data.serverTime || Date.now()).toLocaleString())}</div></section>`;
+      <section class="card"><div class="sub" style="margin:0">App version ${esc(load('version', '?'))} · Data: Food_Log sheet · ${state.data.foods.length.toLocaleString()} foods · last sync ${esc(new Date(state.data.serverTime || Date.now()).toLocaleString())}</div></section>`;
   }
 
   // ---------- modals ----------
@@ -640,7 +640,11 @@
     try {
       const v = await (await fetch('../version.json?t=' + Date.now(), { cache: 'no-store' })).json();
       const seen = load('version', null);
-      if (seen && v.version !== seen && !state.queue.length && !state.modal) { save('version', v.version); location.reload(); return true; }
+      if (seen && v.version !== seen && !state.queue.length && !state.modal) {
+        save('version', v.version);
+        // reload with a fresh URL so the page itself can't come from cache
+        const u = new URL(location.href); u.searchParams.set('r', Date.now()); location.replace(u.toString()); return true;
+      }
       save('version', v.version);
     } catch (e) {}
     return false;
