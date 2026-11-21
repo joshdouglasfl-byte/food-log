@@ -259,6 +259,8 @@ function haeWorkouts_(p) {
     const raw = String(w.name || '').trim();
     notes.push(`${raw} | ${w.start} | ${w.end} | ${w.duration} | ${cal}`);
     if (!start || cal <= 0) { skipped++; return; }
+    // Lose It! (and similar apps) write logged exercise into Health as zero-length workouts at 23:59:59: not watch data
+    if (!end || end <= start) { skipped++; return; }
     const secs = Number(w.duration) || (end ? (end - start) / 1000 : 0);
     const local = haeLocal_(w.start, start);   // the workout's own local date/time (not the sheet's time zone)
     const id = 'AW-' + local.stamp;
