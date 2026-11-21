@@ -69,6 +69,7 @@
     d.foods.forEach(f => { if (f.id === tmp) f.id = real; });
     d.log.forEach(l => { if (l.food === tmp) l.food = real; });
     state.queue.forEach(q => (q.body.entries || []).forEach(e => { if (e.food === tmp) e.food = real; }));
+    if (state.modal && state.modal.food === tmp) state.modal.food = real;
     persist();
   }
   async function refresh() {
@@ -382,14 +383,14 @@
 
   // ---------- modals ----------
   function openModal(m) { state.modal = m; renderModal(); }
-  function closeModal() { state.modal = null; const o = $('#overlay'); if (o) o.remove(); }
+  function closeModal() { stopScan(); state.modal = null; const o = $('#overlay'); if (o) o.remove(); }
   function renderModal() {
     let o = $('#overlay');
     if (!o) { o = document.createElement('div'); o.id = 'overlay'; o.className = 'overlay'; document.body.appendChild(o);
       o.addEventListener('click', e => { if (e.target === o) closeModal(); }); }
     const m = state.modal;
     const body = m.type === 'add' ? addSheet(m) : m.type === 'food' ? foodSheet(m) : m.type === 'entry' ? entrySheet(m)
-      : m.type === 'quick' ? quickSheet(m) : m.type === 'ex' ? exSheet(m) : m.type === 'meal' ? mealSheet(m) : m.type === 'tell' ? tellSheet(m) : '';
+      : m.type === 'quick' ? quickSheet(m) : m.type === 'ex' ? exSheet(m) : m.type === 'meal' ? mealSheet(m) : m.type === 'tell' ? tellSheet(m) : m.type === 'scan' ? scanSheet(m) : '';
     const keepSearch = $('#q') && document.activeElement === $('#q');
     const pos = keepSearch ? $('#q').selectionStart : null;
     o.innerHTML = `<div class="sheet">${body}</div>`;
@@ -410,7 +411,7 @@
       if (toks.length) foods = foods.filter(f => { const n = (f.name + ' ' + (f.brand || '')).toLowerCase(); return toks.every(t => n.includes(t)); });
       else foods = foods.filter(f => score.has(f.id));
       foods = foods.map(f => [f, score.get(f.id) || 0]).sort((a, b) => b[1] - a[1] || a[0].name.localeCompare(b[0].name)).slice(0, 60);
-      list = `<input id="q" class="search" placeholder="Search your foods" value="${esc(m.q || '')}" autocomplete="off">
+      list = `<div class="qty-row"><input id="q" class="search" placeholder="Search your foods" value="${esc(m.q || '')}" autocomplete="off"><button class="btn ghost" style="margin-bottom:8px" data-m="scan">📷 Scan</button></div>
         ${!toks.length ? `<div class="sub" style="text-align:left;margin:4px 0">Suggested for ${esc(m.slot)} · ${isWeekend(state.date) ? 'weekend' : 'weekday'}</div>` : ''}
         ${foods.map(([f]) => { const lq = lastQty.get(f.id); const qty = lq ? lq.qty : f.per;
           return `<button class="pick" data-food="${esc(f.id)}"><div class="nm"><div>${esc(f.name)}${f.est ? '<span class="est">EST</span>' : ''}</div>
@@ -434,7 +435,7 @@
       <div class="sub" style="margin-top:10px">Claude finds the restaurant's posted numbers (or similar items) and fixes the entry.</div>`;
   }
   function foodSheet(m) {
-    const f = I().foodById.get(m.food); const qty = m.qty;
+    const f = I().foodById.get(m.food); if (!f) return head('Food', true) + '<div class="sheet-body"><div class="empty">Food not found.</div></div>'; const qty = m.qty;
     const k = (Number(qty) || 0) / f.per;
     return head(f.name, true) + `<div class="sheet-body">
       <div class="big-cal" id="fcal">${fmt(f.cal * k)}</div><div class="sub">calories · ${esc(m.slot)}</div>
@@ -477,6 +478,52 @@
       <div class="sub" style="text-align:left">${hint} Tap the mic on the keyboard to dictate.</div>
       <textarea id="tellmsg" class="search" rows="5" style="resize:vertical"></textarea>
       <button class="btn big" data-m="tellsave">Send</button></div>`;
+  }
+
+  // ---------- barcode ----------
+  function scanSheet(m) {
+    return head('Scan a barcode', true) + `<div class="sheet-body">
+      <video id="scanvid" playsinline muted style="width:100%;border-radius:14px;background:#000;max-height:46vh;object-fit:cover"></video>
+      <div class="sub" id="scanmsg" style="margin-top:8px">${esc(m.msg || 'Point the camera at the barcode')}</div>
+      <div class="field"><label>Or type the barcode</label><div class="qty-row"><input id="bcin" inputmode="numeric" autocomplete="off"><button class="btn" data-m="bcgo">Look up</button></div></div></div>`;
+  }
+  let scanCtl = null;
+  function stopScan() { try { scanCtl && scanCtl.stop(); } catch (e) {} scanCtl = null; }
+  function loadZxing() {
+    if (window.ZXingBrowser) return Promise.resolve();
+    return new Promise((ok, bad) => { const sc = document.createElement('script');
+      sc.src = 'https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/zxing-browser.min.js'; sc.onload = ok; sc.onerror = bad; document.head.appendChild(sc); });
+  }
+  async function startScan() {
+    const msg = t => { const e = $('#scanmsg'); if (e) e.textContent = t; };
+    try {
+      await loadZxing();
+      const reader = new ZXingBrowser.BrowserMultiFormatReader();
+      scanCtl = await reader.decodeFromConstraints({ video: { facingMode: 'environment' } }, $('#scanvid'), (res) => {
+        if (res && state.modal && state.modal.type === 'scan') { stopScan(); lookupBarcode(res.getText()); }
+      });
+    } catch (e) { msg('Camera unavailable. Type the barcode below.'); }
+  }
+  async function lookupBarcode(code) {
+    code = String(code || '').replace(/\D/g, ''); if (!code) return toast('Enter a barcode');
+    const m = state.modal, slot = (m.back && m.back.slot) || defaultSlot();
+    const known = state.data.foods.find(f => String(f.barcode || '') === code);
+    const open = f => { stopScan(); state.modal = { type: 'food', food: f.id, qty: f.defQty || f.per, slot, back: m.back }; renderModal(); };
+    if (known) return open(known);
+    const e = $('#scanmsg'); if (e) e.textContent = 'Looking up ' + code + '…';
+    try {
+      const j = await (await fetch(`https://world.openfoodfacts.org/api/v2/product/${code}.json?fields=product_name,brands,nutriments,serving_quantity,serving_size`)).json();
+      const p = j.product, n = p && p.nutriments;
+      if (!p || !n || n['energy-kcal_100g'] == null) { if (e) e.textContent = 'Not found. Use Quick entry and Claude will look it up.'; return; }
+      const per = v => v == null ? null : Math.round(v / 100 * 1000) / 1000;
+      const f = { id: uid('tmp'), tempId: '', name: p.product_name || ('Barcode ' + code), brand: (p.brands || '').split(',')[0].trim(), unit: 'Gram', per: 1,
+        cal: per(n['energy-kcal_100g']), pro: per(n.proteins_100g), fib: per(n.fiber_100g), carb: per(n.carbohydrates_100g), fat: per(n.fat_100g),
+        barcode: code, source: 'Open Food Facts', est: false };
+      f.tempId = f.id; f.defQty = Number(p.serving_quantity) || 100;
+      state.data.foods.push(f); persist();
+      enqueue('addFood', { food: { ...f } });
+      open(f);
+    } catch (err) { if (e) e.textContent = 'Lookup failed. Check the connection or type it again.'; }
   }
 
   // ---------- actions ----------
@@ -583,7 +630,7 @@
   function modalAct(a) {
     const m = state.modal;
     if (a === 'close') return closeModal();
-    if (a === 'back') { state.modal = m.back; return renderModal(); }
+    if (a === 'back') { stopScan(); state.modal = m.back; return renderModal(); }
     if (a === 'foodsave') {
       const f = I().foodById.get(m.food), qty = Number($('#fqty').value);
       if (!(qty > 0)) return toast('Enter an amount');
@@ -619,6 +666,8 @@
       state.data.exercise.push(e); ensureLocalDay(state.date); persist();
       enqueue('addExercise', { entry: e, budget: budgetFor(state.date) }); closeModal(); return render();
     }
+    if (a === 'scan') { state.modal = { type: 'scan', back: m }; renderModal(); return startScan(); }
+    if (a === 'bcgo') return lookupBarcode($('#bcin').value);
     if (a === 'tellsave') {
       const msg = ($('#tellmsg').value || '').trim(); if (!msg) return toast('Type or dictate a message');
       enqueue('append', { tab: 'Feedback', headers: ['Date', 'Time', 'Person', 'For', 'Message', 'Status', 'EntryID'],
