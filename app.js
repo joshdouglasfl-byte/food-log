@@ -56,7 +56,17 @@
     try {
       while (state.queue.length) {
         const job = state.queue[0];
-        const j = await api(job.action, job.body);
+        let j;
+        try { j = await api(job.action, job.body); }
+        catch (err) {
+          const msg = String(err.message || err);
+          // network trouble: stop and retry later; a server refusal: retry 3 times, then set the job aside
+          if (/fetch|network|load failed|abort/i.test(msg)) throw err;
+          job.tries = (job.tries || 0) + 1;
+          if (job.tries < 3) { save('queue', state.queue); throw err; }
+          const failed = load('failed', []); failed.push({ ...job, error: msg, at: new Date().toISOString() }); save('failed', failed.slice(-20));
+          state.queue.shift(); save('queue', state.queue); continue;
+        }
         if (job.action === 'addFood' && j.id && job.body.food.tempId) swapFoodId(job.body.food.tempId, j.id);
         state.queue.shift(); save('queue', state.queue);
       }
@@ -81,8 +91,8 @@
       const res = await fetch(`${CFG.API_URL}?action=bootstrap&person=${encodeURIComponent(PERSON)}&key=${encodeURIComponent(load('key', ''))}`, { signal: ctl.signal }); clearTimeout(tm);
       const j = await res.json();
       if (!j.ok) throw new Error(j.error);
-      if (state.queue.length) return; // don't overwrite unsynced local changes
-      state.data = j; persist(); state.error = ''; syncBudgets(); render(); loadPlanned(); loadBody(); loadServings();
+      if (!state.queue.length) { state.data = j; persist(); state.error = ''; syncBudgets(); render(); } // don't overwrite unsynced local changes
+      loadPlanned(); loadBody(); loadServings();
     } catch (e) { state.error = String(e.message || e); if (state.data) renderSync(); else render(); }
   }
   const persist = () => { save('data', state.data); idx = null; };
@@ -493,7 +503,7 @@
       <div class="sub" style="margin:10px 0 0">XP: 10 per day logged, +10 for done, +15 for done under budget, +25 per week of streak</div></section>
       <section class="card"><h2>Meal sections</h2>${ALL_SLOTS.map(s => `<div class="toggle-row"><span>${s}</span><button class="switch ${vs.includes(s) ? 'on' : ''}" data-slot="${s}"></button></div>`).join('')}</section>
       <section class="card"><h2>Extras</h2><div class="toggle-row"><span>Track water</span><button class="switch ${waterOn() ? 'on' : ''}" data-act="water"></button></div></section>
-      <section class="card"><div class="sub" style="margin:0">App version ${esc(load('version', '?'))} · Data: Food_Log sheet · ${state.data.foods.length.toLocaleString()} foods · last sync ${esc(new Date(state.data.serverTime || Date.now()).toLocaleString())}</div></section>`;
+      <section class="card"><div class="sub" style="margin:0 0 6px">${state.queue.length ? `${state.queue.length} change${state.queue.length === 1 ? '' : 's'} waiting to save (next: ${esc(state.queue[0].action)}${state.queue[0].tries ? `, tried ${state.queue[0].tries}×` : ''})` : 'All changes saved'}${state.error ? ` · last error: ${esc(state.error)}` : ''}${load('failed', []).length ? ` · ${load('failed', []).length} set aside` : ''}</div><div class="sub" style="margin:0">App version ${esc(load('version', '?'))} · Data: Food_Log sheet · ${state.data.foods.length.toLocaleString()} foods · last sync ${esc(new Date(state.data.serverTime || Date.now()).toLocaleString())}</div></section>`;
   }
 
   // ---------- modals ----------
