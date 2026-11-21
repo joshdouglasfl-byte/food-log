@@ -148,3 +148,7 @@ textarea { font: inherit; }
 .week-row.future.proj .d, .week-row.future.proj .v { opacity: 1; }
 .wk-proj { display: block; font-size: 1rem; font-weight: 600; margin-top: 2px; }
 .wk-proj.over { color: var(--over); } .wk-proj.under { color: var(--green); }
+/* iPad home-screen app: iPadOS blurs a band below the status bar, so keep the header text below it */
+@media (display-mode: standalone) and (min-width: 700px) {
+  header.top { padding-top: 46px; }
+}
