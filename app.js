@@ -201,7 +201,8 @@
 
   // ---------- rendering ----------
   function render() {
-    if (!state.data) { $('#app').innerHTML = `<div class="wrap" style="padding-top:40px"><div class="card">${state.error ? 'Couldn’t load: ' + esc(state.error) + '<br><br><button class="btn" onclick="location.reload()">Try again</button>' : 'Loading your log…'}</div></div>`; return; }
+    if (!state.data) { $('#app').innerHTML = `<div class="wrap" style="padding-top:40px"><div class="card">${state.error ? 'Couldn’t load: ' + esc(state.error) + (state.error === 'unauthorized' ? '<div class="field" style="margin-top:12px"><label>Access key</label><input id="keyin" autocomplete="off" autocapitalize="off"></div><button class="btn big" id="keysave">Save key</button>' : '<br><br><button class="btn" onclick="location.reload()">Try again</button>') : 'Loading your log…'}</div></div>`; const ks = $('#keysave'); if (ks) ks.onclick = () => { save('key', ($('#keyin').value || '').trim()); location.reload(); };
+      return; }
     const v = state.view;
     $('#app').innerHTML = header() + `<main class="wrap">${v === 'day' ? dayView() : v === 'week' ? weekView() : settingsView()}</main>` + nav();
     renderSync(); bind();
