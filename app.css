@@ -170,3 +170,4 @@ b.ok { color: var(--green); } b.bad { color: var(--over); }
 .prog-nav span { font-weight: 650; font-size: .95rem; }
 .prog-nav .icon-btn { width: 36px; height: 36px; font-size: 1.1rem; }
 .prog-nav .icon-btn:disabled { opacity: .3; }
+.unit-info { text-align: center; line-height: 1.45; font-size: .85rem; color: var(--muted); background: #efeae0; border-radius: 10px; padding: 7px 10px; margin: 0 0 12px; }

@@ -539,12 +539,47 @@
       <button class="btn big" data-m="quicksave">Add as estimate</button>
       <div class="sub" style="margin-top:10px">Claude finds the restaurant's posted numbers (or similar items) and fixes the entry.</div>`;
   }
+  // ---------- unit insight ----------
+  const WEIGHT_G = { gram: 1, grams: 1, g: 1, ounce: 28.35, ounces: 28.35, oz: 28.35, pound: 453.6, pounds: 453.6, lb: 453.6, kilogram: 1000, kg: 1000 };
+  const normName = n => String(n || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  // grams in one unit of a food: a weight unit converts directly; otherwise match a gram-based entry of the same food by calories
+  function gramsPerUnit(f) {
+    if (!f) return null;
+    const w = WEIGHT_G[String(f.unit || '').toLowerCase()];
+    if (w) return w;
+    if (!(f.cal > 0)) return null;
+    const key = normName(f.name);
+    const g = state.data.foods.find(x => x !== f && normName(x.name) === key && WEIGHT_G[String(x.unit || '').toLowerCase()] && x.cal > 0);
+    if (!g) return null;
+    const calPerGram = g.cal / g.per / WEIGHT_G[String(g.unit).toLowerCase()];
+    return (f.cal / f.per) / calPerGram;
+  }
+  function unitInfo(f) {
+    if (!f) return '';
+    const gpu = gramsPerUnit(f), isG = String(f.unit).toLowerCase().startsWith('gram');
+    // per 100 g for gram foods, per 1 unit otherwise
+    const n = isG ? 100 : 1, k = n / f.per;
+    const head = isG ? 'Per 100 g' : `Per 1 ${esc(f.unit)}${gpu ? ` (≈ ${gpu >= 10 ? r0(gpu) : Math.round(gpu * 10) / 10} g)` : ''}`;
+    const m = (v, lab) => v == null ? '' : ` · ${lab} ${Math.round(v * k * 10) / 10} g`;
+    const line2 = gpu && !isG ? `<br>${(Math.round(f.cal / f.per / gpu * 100) / 100).toFixed(2)} cal per gram` : '';
+    return `<div class="unit-info"><b>${head}:</b> ${fmt(f.cal * k)} cal${m(f.pro, 'protein')}${m(f.fib, 'fiber')}${m(f.carb, 'carbs')}${m(f.fat, 'fat')}${line2}${f.brand ? `<br>${esc(f.brand)}` : ''}</div>`;
+  }
+  const macroText = l => ['pro', 'fib', 'carb', 'fat'].some(k => l[k] != null)
+    ? `Protein ${r0(l.pro || 0)} g · Fiber ${r0(l.fib || 0)} g · Carbs ${r0(l.carb || 0)} g · Fat ${r0(l.fat || 0)} g` : '';
+  function gramsField(f, qty, id) {
+    const gpu = gramsPerUnit(f);
+    if (!gpu || String(f.unit).toLowerCase().startsWith('gram')) return '';
+    return `<div class="field"><label>Or enter grams</label><input id="${id}" type="number" inputmode="decimal" step="any" value="${r0((Number(qty) || 0) * gpu)}" data-gpu="${gpu}"></div>`;
+  }
+
   function foodSheet(m) {
     const f = I().foodById.get(m.food); if (!f) return head('Food', true) + '<div class="sheet-body"><div class="empty">Food not found.</div></div>'; const qty = m.qty;
     const k = (Number(qty) || 0) / f.per;
     return head(f.name, true) + `<div class="sheet-body">
       <div class="big-cal" id="fcal">${fmt(f.cal * k)}</div><div class="sub">calories · ${esc(m.slot)}</div>
+      ${unitInfo(f)}
       <div class="field"><label>Amount (${esc(f.unit)})</label><div class="stepper"><button class="btn ghost" data-step="-1">−</button><input id="fqty" type="number" inputmode="decimal" step="any" value="${esc(qty)}"><button class="btn ghost" data-step="1">+</button></div></div>
+      ${gramsField(f, qty, 'fgram')}
       <div class="sub" id="fmac">Protein ${r0((f.pro || 0) * k)} g · Fiber ${r0((f.fib || 0) * k)} g · Carbs ${r0((f.carb || 0) * k)} g · Fat ${r0((f.fat || 0) * k)} g</div>
       <button class="btn big" data-m="foodsave">Add</button></div>`;
   }
@@ -552,7 +587,10 @@
     const l = m.entry, f = l.food && I().foodById.get(l.food);
     const editable = !!l.id;
     return head(l.name) + `<div class="sheet-body"><div class="big-cal" id="ecal">${fmt(l.cal)}</div><div class="sub">${esc(l.meal)} · ${esc(qtyText(l))}${l.est ? ' · estimate' : ''}</div>
+      ${unitInfo(f)}
       ${editable ? `<div class="field"><label>Amount (${esc(l.unit || '')})</label><div class="stepper"><button class="btn ghost" data-step="-1">−</button><input id="eqty" type="number" inputmode="decimal" step="any" value="${esc(+Number(l.qty).toFixed(2))}"><button class="btn ghost" data-step="1">+</button></div></div>
+        ${f ? gramsField(f, l.qty, 'egram') : ''}
+        <div class="sub" id="emac">${macroText(l)}</div>
         ${!f ? `<div class="field"><label>Calories</label><input id="ecalin" type="number" inputmode="numeric" value="${r0(l.cal)}"></div>` : ''}
         <div class="field"><label>Meal</label><select id="emeal">${ALL_SLOTS.map(s => `<option ${s === l.meal ? 'selected' : ''}>${s}</option>`).join('')}</select></div>
         ${isPlanned(l) ? '<button class="btn big done" data-m="entryate" style="margin-bottom:10px">✓ I ate this</button>'
@@ -748,6 +786,13 @@
       inp.value = Math.max(0, Math.round(((Number(inp.value) || 0) + inc * Number(b.dataset.step)) * 100) / 100);
       inp.dispatchEvent(new Event('input'));
     });
+    const syncG = (gid, qid) => {
+      const g = $('#' + gid), q = $('#' + qid); if (!g || !q) return;
+      const gpu = Number(g.dataset.gpu);
+      g.oninput = () => { q.value = Math.round((Number(g.value) || 0) / gpu * 100) / 100; q.dataset.fromG = '1'; q.dispatchEvent(new Event('input')); };
+      q.addEventListener('input', () => { if (q.dataset.fromG) { delete q.dataset.fromG; return; } g.value = r0((Number(q.value) || 0) * gpu); });
+    };
+    syncG('fgram', 'fqty'); syncG('egram', 'eqty');
     const fq = $('#fqty'); if (fq) fq.oninput = () => {
       m.qty = fq.value; const f = I().foodById.get(m.food), k = (Number(fq.value) || 0) / f.per;
       $('#fcal').textContent = fmt(f.cal * k);
@@ -757,6 +802,7 @@
       const l = m.entry, f = l.food && I().foodById.get(l.food);
       const c = f ? f.cal / f.per * (Number(eq.value) || 0) : l.cal / (l.qty || 1) * (Number(eq.value) || 0);
       $('#ecal').textContent = fmt(c); const ci = $('#ecalin'); if (ci) ci.value = r0(c);
+      const em = $('#emac'); if (em && f) { const k = (Number(eq.value) || 0) / f.per; em.textContent = macroText({ pro: f.pro == null ? null : f.pro * k, fib: f.fib == null ? null : f.fib * k, carb: f.carb == null ? null : f.carb * k, fat: f.fat == null ? null : f.fat * k }); }
     };
   }
   function modalAct(a) {
