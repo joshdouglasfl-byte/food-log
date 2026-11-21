@@ -467,3 +467,8 @@ function fdcFoods_(list) {
   });
   return out.slice(0, 15);
 }
+
+// Run once from the editor (pick it in the function menu, then Run) so Google asks for the "connect to an external service" permission USDA search needs.
+function authorizeOutsideCalls() {
+  UrlFetchApp.fetch('https://api.nal.usda.gov/fdc/v1/foods/search?api_key=DEMO_KEY&query=apple&pageSize=1', { muteHttpExceptions: true });
+}
