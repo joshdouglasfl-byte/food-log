@@ -510,7 +510,7 @@
     const k = (Number(qty) || 0) / f.per;
     return head(f.name, true) + `<div class="sheet-body">
       <div class="big-cal" id="fcal">${fmt(f.cal * k)}</div><div class="sub">calories · ${esc(m.slot)}</div>
-      <div class="field"><label>Amount (${esc(f.unit)})</label><div class="qty-row"><input id="fqty" type="number" inputmode="decimal" step="any" value="${esc(qty)}"></div></div>
+      <div class="field"><label>Amount (${esc(f.unit)})</label><div class="stepper"><button class="btn ghost" data-step="-1">−</button><input id="fqty" type="number" inputmode="decimal" step="any" value="${esc(qty)}"><button class="btn ghost" data-step="1">+</button></div></div>
       <div class="sub" id="fmac">Protein ${r0((f.pro || 0) * k)} g · Fiber ${r0((f.fib || 0) * k)} g · Carbs ${r0((f.carb || 0) * k)} g · Fat ${r0((f.fat || 0) * k)} g</div>
       <button class="btn big" data-m="foodsave">Add</button></div>`;
   }
@@ -518,18 +518,20 @@
     const l = m.entry, f = l.food && I().foodById.get(l.food);
     const editable = !!l.id;
     return head(l.name) + `<div class="sheet-body"><div class="big-cal" id="ecal">${fmt(l.cal)}</div><div class="sub">${esc(l.meal)} · ${esc(qtyText(l))}${l.est ? ' · estimate' : ''}</div>
-      ${editable ? `<div class="field"><label>Amount (${esc(l.unit || '')})</label><input id="eqty" type="number" inputmode="decimal" step="any" value="${esc(+Number(l.qty).toFixed(2))}"></div>
+      ${editable ? `<div class="field"><label>Amount (${esc(l.unit || '')})</label><div class="stepper"><button class="btn ghost" data-step="-1">−</button><input id="eqty" type="number" inputmode="decimal" step="any" value="${esc(+Number(l.qty).toFixed(2))}"><button class="btn ghost" data-step="1">+</button></div></div>
         ${!f ? `<div class="field"><label>Calories</label><input id="ecalin" type="number" inputmode="numeric" value="${r0(l.cal)}"></div>` : ''}
         <div class="field"><label>Meal</label><select id="emeal">${ALL_SLOTS.map(s => `<option ${s === l.meal ? 'selected' : ''}>${s}</option>`).join('')}</select></div>
         ${isPlanned(l) ? '<button class="btn big done" data-m="entryate" style="margin-bottom:10px">✓ I ate this</button>'
           : '<button class="btn big ghost" data-m="entryplan" style="margin-bottom:10px">🕒 Move back to planned</button>'}
         <button class="btn big" data-m="entrysave">Save</button><button class="danger" data-m="entrydel">Delete entry</button>`
-      : `<div class="sub">Imported from Lose It!. Edit older entries in the sheet.</div>`}</div>`;
+      : `<div class="sub">Older Lose It! entry (before Sep 21). Edit it in the sheet.</div>`}</div>`;
   }
   function quickSheet(m) { return head('Quick entry') + `<div class="sheet-body">${quickForm(m)}</div>`; }
   function exSheet(m) {
     if (m.entry) return head(m.entry.name) + `<div class="sheet-body"><div class="big-cal">${fmt(m.entry.cal)}</div><div class="sub">calories burned</div>
-      ${m.entry.id ? '<button class="danger" data-m="exdel">Delete exercise</button>' : '<div class="sub">Imported entry. Edit it in the sheet.</div>'}</div>`;
+      ${m.entry.id ? `<div class="qty-row"><div class="field" style="flex:1"><label>Minutes</label><input id="xmin" type="number" inputmode="numeric" value="${esc(m.entry.min ?? '')}"></div>
+        <div class="field" style="flex:1"><label>Calories</label><input id="xcal" type="number" inputmode="numeric" value="${esc(r0(m.entry.cal))}"></div></div>
+        <button class="btn big" data-m="exupd">Save</button><button class="danger" data-m="exdel">Delete exercise</button>` : '<div class="sub">Older imported entry. Edit it in the sheet.</div>'}</div>`;
     const recent = [...new Set(state.data.exercise.slice(-200).map(x => x.name))].slice(-8).reverse();
     return head('Add exercise') + `<div class="sheet-body">
       <div class="field"><label>Activity</label><input id="xname" list="xlist" placeholder="Bicycling"><datalist id="xlist">${recent.map(n => `<option>${esc(n)}</option>`).join('')}</datalist></div>
@@ -703,6 +705,13 @@
     document.querySelectorAll('[data-meal]').forEach(b => b.onclick = () => {
       state.modal = { type: 'meal', group: m._meals[Number(b.dataset.meal)], slot: m.slot, back: m }; renderModal();
     });
+    document.querySelectorAll('[data-step]').forEach(b => b.onclick = () => {
+      const inp = $('#eqty') || $('#fqty'); if (!inp) return;
+      const unit = (m.entry && m.entry.unit) || (m.food && I().foodById.get(m.food)?.unit) || '';
+      const inc = /gram|ml|milliliter/i.test(unit) ? 10 : (/ounce|oz/i.test(unit) ? 0.5 : 1);
+      inp.value = Math.max(0, Math.round(((Number(inp.value) || 0) + inc * Number(b.dataset.step)) * 100) / 100);
+      inp.dispatchEvent(new Event('input'));
+    });
     const fq = $('#fqty'); if (fq) fq.oninput = () => {
       m.qty = fq.value; const f = I().foodById.get(m.food), k = (Number(fq.value) || 0) / f.per;
       $('#fcal').textContent = fmt(f.cal * k);
@@ -762,6 +771,11 @@
       enqueue('append', { tab: 'Feedback', headers: ['Date', 'Time', 'Person', 'For', 'Message', 'Status', 'EntryID'],
         rows: [{ Date: today(), Time: nowHM(), Person: PERSON, For: m.to, Message: msg, Status: 'New', EntryID: uid('T') }] });
       closeModal(); return toast(`Saved for your ${m.to.toLowerCase()}`);
+    }
+    if (a === 'exupd') {
+      const e = m.entry, cal = Number($('#xcal').value); if (!(cal >= 0)) return toast('Enter calories');
+      e.cal = cal; e.min = Number($('#xmin').value) || null; persist();
+      enqueue('update', { tab: 'Exercise', id: e.id, values: { Minutes: e.min ?? '', Calories: cal } }); closeModal(); render(); return toast('Saved');
     }
     if (a === 'exdel') {
       const e = m.entry; state.data.exercise = state.data.exercise.filter(x => x !== e); persist();
