@@ -79,7 +79,7 @@
       const j = await res.json();
       if (!j.ok) throw new Error(j.error);
       if (state.queue.length) return; // don't overwrite unsynced local changes
-      state.data = j; persist(); state.error = ''; render();
+      state.data = j; persist(); state.error = ''; syncBudgets(); render();
     } catch (e) { state.error = String(e.message || e); if (state.data) renderSync(); else render(); }
   }
   const persist = () => { save('data', state.data); idx = null; };
@@ -102,12 +102,47 @@
     return s.length ? ALL_SLOTS.filter(x => s.includes(x)) : ALL_SLOTS;
   };
   const waterOn = () => profile()['Track water'] === 'Yes';
+  // ---------- plan / targets ----------
+  const GOALS = [-2, -1.5, -1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 1];
+  function latestWeight(date) {
+    const b = (state.data.body || []).filter(x => x.weight && x.date <= date).pop() || (state.data.body || []).filter(x => x.weight).pop();
+    return b ? b.weight : null;
+  }
+  function planFor(date) {
+    const p = profile(), wt = latestWeight(date);
+    const h = Number(p['Height (in)']), bd = p['Birthday'], sex = String(p['Sex'] || '').toLowerCase();
+    if (!wt || !h || !bd) return null;
+    const d = parse(date), b = parse(bd);
+    let age = d.getFullYear() - b.getFullYear(); if (d.getMonth() < b.getMonth() || (d.getMonth() === b.getMonth() && d.getDate() < b.getDate())) age--;
+    const kg = wt * 0.453592, cm = h * 2.54;
+    const bmr = 10 * kg + 6.25 * cm - 5 * age + (sex.startsWith('f') ? -161 : 5);   // Mifflin-St Jeor
+    const burn = bmr * 1.2;                                                          // sedentary
+    const goal = Number(p['Weekly goal (lb/week)']) || 0;
+    const daily = goal * 3500 / 7;
+    const wkndExtra = Number(p['Weekend adjustment (cal)']) || 0;
+    const wkdayAdj = Number(p['Weekday adjustment (cal)']) || 0;
+    const base = burn + daily;
+    const target = base + (isWeekend(date) ? wkndExtra : wkdayAdj);
+    return { age, wt, h, sex, bmr, burn, goal, daily, base, wkndExtra, wkdayAdj, target: Math.round(target) };
+  }
+  // Past days keep the budget they had; today and later use the plan (a dietitian Plan target overrides).
   function budgetFor(date) {
     const { dayByDate, planByDate } = I();
-    if (dayByDate.get(date)?.budget) return dayByDate.get(date).budget;
     if (planByDate.get(date)?.target) return planByDate.get(date).target;
+    if (date >= today()) { const pl = planFor(date); if (pl) return pl.target; }
+    if (dayByDate.get(date)?.budget) return dayByDate.get(date).budget;
     const prior = state.data.days.filter(x => x.date <= date && x.budget).pop() || state.data.days.filter(x => x.budget).pop();
     return prior ? prior.budget : 2000;
+  }
+  // Keep the sheet's Days budgets for today and later in step with the plan
+  function syncBudgets() {
+    const t = today();
+    for (const d of state.data.days) {
+      if (d.date < t) continue;
+      const b = budgetFor(d.date);
+      if (Math.abs((d.budget || 0) - b) >= 1) { d.budget = b; enqueue('setDay', { date: d.date, budget: b }); }
+    }
+    persist();
   }
   function dayTotals(date) {
     const { logByDate, exByDate, dayByDate } = I();
@@ -217,7 +252,7 @@
     if (state.view === 'week') return `<header class="top"><div class="top-row">
       <button class="icon-btn" data-act="wprev">‹</button><h1>Week of ${esc(parse(weekStart(state.weekOf)).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }))}</h1>
       <button class="icon-btn" data-act="wnext">›</button></div><div class="sync" id="sync"></div></header>`;
-    return `<header class="top"><div class="top-row"><h1>${esc(PERSON)}</h1></div><div class="sync" id="sync"></div></header>`;
+    return `<header class="top"><div class="top-row"><h1>${esc(PERSON)}’s plan</h1></div><div class="sync" id="sync"></div></header>`;
   }
   function renderSync() {
     const el = $('#sync'); if (!el) return;
@@ -227,7 +262,7 @@
   }
   function nav() {
     const b = (v, i, t) => `<button class="${state.view === v ? 'on' : ''}" data-view="${v}"><span class="i">${i}</span>${t}</button>`;
-    return `<nav class="tabs">${b('day', '📅', 'Day')}${b('week', '📊', 'Week')}<button class="plus" data-act="add">+</button>${b('settings', '⚙️', 'Settings')}<button data-act="refresh"><span class="i">⟳</span>Sync</button></nav>`;
+    return `<nav class="tabs">${b('day', '📅', 'Day')}${b('week', '📊', 'Week')}<button class="plus" data-act="add">+</button>${b('settings', '🎯', 'Plan')}<button data-act="refresh"><span class="i">⟳</span>Sync</button></nav>`;
   }
 
   function dayView() {
@@ -290,25 +325,49 @@
       const eaten = kind === 'assumed' ? avg : x.eaten;
       const w = cap > 0 ? Math.min(100, eaten / cap * 100) : 0;
       const sign = v => (v < 0 ? '+' : '−') + fmt(Math.abs(v));
-      rows += `<button class="week-row ${isToday ? 'today' : ''} ${kind === 'planned' || kind === 'assumed' ? 'proj' : ''}" style="width:100%;text-align:left" data-goto="${d}">
+      rows += `<button class="week-row ${isToday ? 'today' : ''} ${future ? 'future' : ''} ${kind === 'planned' || kind === 'assumed' ? 'proj' : ''}" style="width:100%;text-align:left" data-goto="${d}">
         <div class="d">${parse(d).toLocaleDateString(undefined, { weekday: 'short' })}<small>${kind === 'planned' ? 'planned' : kind === 'assumed' ? 'avg' : parse(d).getDate()}</small></div>
         <div class="bar" style="margin:0"><div class="fill ${val !== null && val < 0 ? 'over' : ''} ${kind === 'assumed' ? 'ghost' : ''}" style="width:${val !== null ? w : 0}%"></div></div>
         <div class="v ${val === null ? '' : val < 0 ? 'over' : 'under'}">${val !== null ? sign(val) : '—'}</div></button>`;
     }
     const weekOver = ws > t, weekPast = addDays(ws, 6) < t;
     const box = (label, v) => `<div class="sub" style="margin:0">${label}</div><div class="wk-total ${v < 0 ? 'over' : 'under'}">${fmt(Math.abs(v))} cal ${v < 0 ? 'over' : 'under'}</div>`;
+    const amt = v => `${fmt(Math.abs(v))} ${v < 0 ? 'over' : 'under'}`;
     let top = '';
-    if (weekPast) top = box('Week total', tot);
-    else {
-      top = `<div class="wk-split">${weekOver ? '' : `<div>${box('So far', tot)}</div>`}<div>${box('Projected by Sunday', proj)}</div></div>`;
-      if (assumed.length) top += `<div class="sub" style="margin:8px 0 0">Assuming ${fmt(avg)} cal a day (your recent average) for ${assumed.join(', ')}, with nothing planned yet</div>`;
-    }
+    if (weekPast) top = `<div class="sub" style="margin:0">Week total</div><div class="wk-total ${tot < 0 ? 'over' : 'under'}">${amt(tot)}</div>`;
+    else if (weekOver) top = `<div class="sub" style="margin:0">Projected for the week</div><div class="wk-total ${proj < 0 ? 'over' : 'under'}">${amt(proj)}</div>`;
+    else top = `<div class="sub" style="margin:0">This week so far</div><div class="wk-total ${tot < 0 ? 'over' : 'under'}">${amt(tot)} <span class="wk-proj ${proj < 0 ? 'over' : 'under'}">(projected ${amt(proj)})</span></div>`;
+    if (!weekPast && assumed.length) top += `<div class="sub" style="margin:8px 0 0">Assuming ${fmt(avg)} cal a day (your recent average) for ${assumed.join(', ')}, with nothing planned yet</div>`;
     return `<section class="card">${top}</section>
       <section class="card">${rows}<div class="sub" style="margin:8px 0 0">Under (−) or over (+) each day. Faded rows are projected.</div></section>`;
   }
+  function planCard() {
+    const pl = planFor(today());
+    if (!pl) return `<section class="card"><h2>My plan</h2><div class="empty">Add birthday, sex, height and a weigh-in to the Profiles and Body tabs to calculate a plan.</div></section>`;
+    const goalTxt = pl.goal === 0 ? 'maintain your weight' : `${pl.goal < 0 ? 'lose' : 'gain'} ${Math.abs(pl.goal)} lb per week`;
+    const ws = weekStart(today()), days = [...Array(7)].map((_, i) => addDays(ws, i));
+    const tg = days.map(d => Math.round(pl.base + (isWeekend(d) ? pl.wkndExtra : pl.wkdayAdj)));
+    const lo = Math.min(pl.burn, ...tg) * 0.6, mx = Math.max(pl.burn, ...tg) * 1.03, pct = v => (v - lo) / (mx - lo) * 100;
+    const rows = days.map((d, i) => {
+      const t = tg[i], adj = t - Math.round(pl.base);
+      return `<div class="plan-row"><div class="d">${parse(d).toLocaleDateString(undefined, { weekday: 'short' })}</div>
+        <div class="plan-bar"><div class="burn" style="width:${pct(pl.burn)}%"></div><div class="tgt ${t > pl.burn ? 'gain' : ''}" style="width:${pct(t)}%"></div></div>
+        <div class="v">${fmt(t)}${adj ? `<small>${adj > 0 ? '+' : '−'}${fmt(Math.abs(adj))}</small>` : ''}</div></div>`;
+    }).join('');
+    const wk = tg.reduce((a, b) => a + b, 0);
+    return `<section class="card"><h2>My plan</h2>
+      <p class="plan-txt">At ${pl.age}, ${Math.floor(pl.h / 12)}′${Math.round(pl.h % 12)}″ and ${pl.wt} lb, your sedentary burn is <b>${fmt(pl.burn)}</b> cal a day.
+      Your plan is to <b>${goalTxt}</b>${pl.daily ? `, ${pl.daily < 0 ? 'minus' : 'plus'} ${fmt(Math.abs(pl.daily))} a day` : ''}, for a daily target of <b>${fmt(pl.base)}</b>.</p>
+      ${rows}
+      <div class="plan-legend"><span><i class="burn"></i>Sedentary burn</span><span><i class="tgt"></i>Target</span></div>
+      <div class="sub" style="margin:6px 0 0">Week total ${fmt(wk)} cal · exercise adds to each day · this week’s days already logged keep their budget</div>
+      <div class="field" style="margin-top:12px"><label>Weekly goal</label><select id="goalsel">${[...new Set([...GOALS, pl.goal])].sort((a, b) => a - b).map(g => `<option value="${g}" ${g === pl.goal ? 'selected' : ''}>${g === 0 ? 'Maintain' : (g < 0 ? 'Lose ' : 'Gain ') + Math.abs(g) + ' lb a week'}</option>`).join('')}</select></div>
+      <div class="field"><label>Weekend extra (weekdays give it back)</label><select id="wkndsel">${[0, 100, 150, 200, 250, 300, 400, 500].map(v => `<option value="${v}" ${v === pl.wkndExtra ? 'selected' : ''}>${v ? '+' + v + ' Sat & Sun, −' + Math.round(v * 2 / 5) + ' Mon–Fri' : 'Same every day'}</option>`).join('')}</select></div>
+    </section>`;
+  }
   function settingsView() {
     const rw = rewards(), vs = visibleSlots();
-    return `<section class="card"><h2>Level ${rw.level}<small>${fmt(rw.xp)} XP</small></h2>
+    return planCard() + `<section class="card"><h2>Level ${rw.level}<small>${fmt(rw.xp)} XP</small></h2>
       <div class="level"><div class="ring" style="--p:${rw.pct}"><span>${rw.level}</span></div>
       <div>${fmt(rw.toNext)} XP to level ${rw.level + 1}<br><small style="color:var(--muted)">Streak ${rw.st} days · best ${rw.best}</small></div></div></section>
       <section class="card"><h2>Badges</h2><div class="badges">${rw.badges.map(([e, n, got]) => `<div class="badge ${got ? 'got' : ''}"><span class="e">${e}</span>${esc(n)}</div>`).join('')}</div>
@@ -456,6 +515,8 @@
     });
     document.querySelectorAll('[data-ex]').forEach((b, i) => b.onclick = () => openModal({ type: 'ex', entry: (I().exByDate.get(state.date) || [])[i] }));
     document.querySelectorAll('[data-water]').forEach(b => b.onclick = () => setDayFlag({ water: Math.max(0, dayTotals(state.date).water + Number(b.dataset.water)) }));
+    const gs = $('#goalsel'); if (gs) gs.onchange = () => savePlan({ 'Weekly goal (lb/week)': Number(gs.value) });
+    const wk = $('#wkndsel'); if (wk) wk.onchange = () => { const v = Number(wk.value); savePlan({ 'Weekend adjustment (cal)': v, 'Weekday adjustment (cal)': -Math.round(v * 2 / 5) }); };
     document.querySelectorAll('[data-tell]').forEach(b => b.onclick = () => openModal({ type: 'tell', to: b.dataset.tell }));
     document.querySelectorAll('[data-goto]').forEach(b => b.onclick = () => { state.date = b.dataset.goto; state.view = 'day'; render(); });
     document.querySelectorAll('[data-slot]').forEach(b => b.onclick = () => {
@@ -465,6 +526,10 @@
       state.data.profile['Meal slots'] = next.join(', '); persist();
       enqueue('saveSettings', { settings: { 'Meal slots': next.join(', ') } }); render();
     });
+  }
+  function savePlan(settings) {
+    Object.assign(state.data.profile, settings); persist();
+    enqueue('saveSettings', { settings }); syncBudgets(); render(); toast('Plan updated');
   }
   function act(a) {
     if (a === 'prev') state.date = addDays(state.date, -1);
