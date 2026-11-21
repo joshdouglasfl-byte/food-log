@@ -2,8 +2,9 @@
  "entries": [
   {
    "date": "2026-11-21",
-   "version": "20261121170954",
+   "version": "20261121171223",
    "items": [
+    "New switch in Settings > Extras: show today's progress against your original target, with exercise as extra on top",
     "Barcode scanning is much better: sharper camera, a stronger reader and a box to aim at",
     "New \"Take a photo instead\" button when a barcode won't scan live",
     "Notes from your dietitian now show at the top of today, with Got it and Reply (older notes under 📬 Coach notes)",

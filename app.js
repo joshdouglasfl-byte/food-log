@@ -215,6 +215,8 @@
     return s.length ? ALL_SLOTS.filter(x => s.includes(x)) : ALL_SLOTS;
   };
   const waterOn = () => profile()['Track water'] === 'Yes';
+  // Profiles 'Show target first': lead the day card with the original target (Michelle's default); blank = on for Michelle only
+  const targetFirst = () => { const v = profile()['Show target first']; return v ? v === 'Yes' : PERSON === 'Michelle'; };
   // ---------- plan / targets ----------
   const GOALS = [-2, -1.5, -1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 1];
   function latestWeight(date) {
@@ -403,9 +405,17 @@
     const x = dayTotals(state.date), over = x.left < 0;
     const cap = x.budget + x.burned, pct = cap > 0 ? Math.min(100, x.eaten / cap * 100) : 0;
     const markPct = cap > 0 ? Math.min(100, x.budget / cap * 100) : 0;
-    let h = coachCard() + `<section class="card"><div class="summary">
+    // Target first (Settings > Extras): lead with the original target; exercise shows as extra earned
+    const tLeft = x.budget - x.eaten, tOver = tLeft < 0;
+    const summary = targetFirst()
+      ? `<div class="summary">
+      <div><b>${fmt(x.budget)}</b><span>Target</span></div><div><b>${fmt(x.eaten)}</b><span>Food</span></div>
+      <div><b>${x.burned ? '+' : ''}${fmt(x.burned)}</b><span>Exercise</span></div><div class="left ${tOver ? 'over' : ''}"><b>${fmt(Math.abs(tLeft))}</b><span>${tOver ? 'Over target' : 'Left'}</span></div></div>
+      <div class="target-line"><b class="${tOver ? 'over' : ''}">${fmt(Math.abs(tLeft))} ${tOver ? 'over' : 'left of'} your target</b>${x.burned ? `<span class="${over ? 'over' : ''}">${fmt(Math.abs(x.left))} ${over ? 'over' : 'left'} with exercise</span>` : ''}</div>`
+      : `<div class="summary">
       <div><b>${fmt(x.budget)}</b><span>Budget</span></div><div><b>${fmt(x.eaten)}</b><span>Food</span></div>
-      <div><b>${fmt(x.burned)}</b><span>Exercise</span></div><div class="left ${over ? 'over' : ''}"><b>${fmt(Math.abs(x.left))}</b><span>${over ? 'Over' : 'Left'}</span></div></div>
+      <div><b>${fmt(x.burned)}</b><span>Exercise</span></div><div class="left ${over ? 'over' : ''}"><b>${fmt(Math.abs(x.left))}</b><span>${over ? 'Over' : 'Left'}</span></div></div>`;
+    let h = coachCard() + `<section class="card">${summary}
       <div class="bar"><div class="fill ${over ? 'over' : ''}" style="width:${pct}%"></div>${x.burned ? `<div class="mark" style="left:${markPct}%"></div>` : ''}</div>
       <div class="macros"><span>Protein ${r0(x.pro)} g</span><span>Fiber ${r0(x.fib)} g</span>${x.log.some(isPlanned) ? `<span>🕒 ${fmt(x.log.filter(isPlanned).reduce((a, l) => a + l.cal, 0))} planned</span>` : ''}</div></section>`;
     for (const slot of visibleSlots()) {
@@ -632,7 +642,8 @@
       <div class="sub" style="text-align:left;margin:0 0 10px">Last sync ${esc(new Date(state.data.serverTime || Date.now()).toLocaleString())}</div>
       <button class="btn big" data-act="refresh">${state.syncing ? 'Syncing…' : '⟳ Sync now'}</button></section>
       <section class="card"><h2>Meal sections</h2>${ALL_SLOTS.map(s => `<div class="toggle-row"><span>${s}</span><button class="switch ${vs.includes(s) ? 'on' : ''}" data-slot="${s}"></button></div>`).join('')}</section>
-      <section class="card"><h2>Extras</h2><div class="toggle-row"><span>Track water</span><button class="switch ${waterOn() ? 'on' : ''}" data-act="water"></button></div></section>
+      <section class="card"><h2>Extras</h2><div class="toggle-row"><span>Track water</span><button class="switch ${waterOn() ? 'on' : ''}" data-act="water"></button></div>
+        <div class="toggle-row"><span>Show progress against my target<small class="toggle-sub">Exercise shows as extra on top</small></span><button class="switch ${targetFirst() ? 'on' : ''}" data-act="targetfirst"></button></div></section>
       ${watchCard()}
       <section class="card"><h2>About</h2><div class="sub" style="margin:0">App version ${esc(load('version', '?'))} · Data: Food_Log sheet · ${state.data.foods.length.toLocaleString()} foods</div><button class="news-line" data-act="news">What's new${newsUnread() ? '<i class="news-dot" aria-label="unread"></i>' : ''}<span>›</span></button></section>`;
   }
@@ -1200,6 +1211,10 @@
       const x = dayTotals(state.date), st = streak();
       return toast(x.left >= 0 ? `Done! ${fmt(x.left)} under · 🔥 ${st} days` : `Logged and done · 🔥 ${st} days`);
     } else if (a === 'undone') return setDayFlag({ done: false });
+    else if (a === 'targetfirst') {
+      const v = targetFirst() ? 'No' : 'Yes'; state.data.profile['Show target first'] = v; persist();
+      enqueue('saveSettings', { settings: { 'Show target first': v } });
+    }
     else if (a === 'water') {
       const v = waterOn() ? 'No' : 'Yes'; state.data.profile['Track water'] = v; persist();
       enqueue('saveSettings', { settings: { 'Track water': v } });

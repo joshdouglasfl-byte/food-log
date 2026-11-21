@@ -62,3 +62,6 @@ Done: phases 1-2, plan view (Mifflin-St Jeor x1.2 + manual adjustment + weekly g
 - Live: getUserMedia 1920x1080 ideal, continuous focus and up to 2x zoom where supported; reads every ~120 ms, alternating the guide-box area (80% x 50%) and the full frame, downscaled to 1280 wide. "Take a photo instead" (`input capture=environment`) decodes a full-res still. Hint after 9 s.
 - Saved-food barcode match ignores leading zeros (UPC-A vs EAN-13).
 - Tested with Chrome's fake camera fed a blurred, rotated UPC-A (y4m) and a photo file, API and CDN stubbed.
+
+## Target first (2026-11-21)
+- Profiles column R `Show target first` (Yes/No; blank = on for Michelle only), toggled in Settings > Extras via `saveSettings`. On: the today card shows Target / Food / +Exercise / Left vs target, plus "N left of your target · M left with exercise". Set: Josh No, Michelle Yes.
