@@ -464,7 +464,11 @@
     const hgt = v => 18 + (v - bottom) / (top - bottom || 1) * 82;   // % of chart height
     const rows = `<div class="vbars"><div class="vline" style="bottom:${24 + hgt(avgDay) * 1.3}px"></div>${days.map((d, i) => {
       const t = tg[i], hi = t > avgDay + 1, lo = t < avgDay - 1;
-      return `<div class="vcol"><div class="vbar ${hi ? 'hi' : lo ? 'lo' : ''}" style="height:${hgt(t) * 1.3}px"><span class="vval">${fmt(t)}</span></div><div class="vday">${parse(d).toLocaleDateString(undefined, { weekday: 'short' }).slice(0, 2)}</div></div>`;
+      // number sits above the bar, but never on or just under the dashed line: if it would crowd the line, lift it above
+      const hb = hgt(t) * 1.3, hl = hgt(avgDay) * 1.3, LBL = 16, GAP = 6;
+      const fitsBelow = hb + GAP + LBL + GAP <= hl, nearLine = !fitsBelow && hb < hl + GAP;
+      const lblAt = 24 + (nearLine ? hl + GAP + 2 : hb + 4);
+      return `<div class="vcol"><span class="vval" style="bottom:${lblAt}px">${fmt(t)}</span><div class="vbar ${hi ? 'hi' : lo ? 'lo' : ''}" style="height:${hb}px"></div><div class="vday">${parse(d).toLocaleDateString(undefined, { weekday: 'short' }).slice(0, 2)}</div></div>`;
     }).join('')}</div>`;
     const wk = tg.reduce((a, b) => a + b, 0);
     return `<section class="card"><h2>My plan</h2>

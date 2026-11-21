@@ -2,7 +2,7 @@
  "entries": [
   {
    "date": "2026-11-21",
-   "version": "20261121114144",
+   "version": "20261121114455",
    "items": [
     "What's new: this list, opened from the bottom of Settings, with a green dot when there's something you haven't read",
     "App version now shows right away on a fresh install instead of \"?\"",
@@ -14,7 +14,7 @@
     "New Settings tab (⚙️) replaces the Sync button: Sync now is at the top, then meal sections, water and About. Plan keeps your calorie plan, progress, level and badges",
     "Removed the big + from the bottom bar; add food and exercise from their sections on the Day screen",
     "The Day tab is now Today and always jumps back to today, even after opening another day from Week",
-    "Plan chart: each day's calories sit inside its bar, the average-day line runs behind the bars, and the average is in the legend"
+    "Plan chart: bigger dark numbers above the bars, always clear of the average-day line, with the average shown in the legend"
    ]
   },
   {
