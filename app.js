@@ -368,7 +368,7 @@
   }
   function nav() {
     const b = (v, i, t) => `<button class="${state.view === v ? 'on' : ''}" data-view="${v}"><span class="i">${i}</span>${t}</button>`;
-    return `<nav class="tabs">${b('day', '📅', 'Day')}${b('week', '📊', 'Week')}${b('settings', '🎯', 'Plan')}${b('prefs', newsUnread() ? '⚙️<i class="news-dot tab-dot"></i>' : '⚙️', 'Settings')}</nav>`;
+    return `<nav class="tabs">${b('day', '📅', 'Today')}${b('week', '📊', 'Week')}${b('settings', '🎯', 'Plan')}${b('prefs', newsUnread() ? '⚙️<i class="news-dot tab-dot"></i>' : '⚙️', 'Settings')}</nav>`;
   }
 
   function dayView() {
@@ -956,7 +956,7 @@
   }
 
   function bind() {
-    document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => { state.view = b.dataset.view; if (state.view === 'week') state.weekOf = state.date; render(); scrollTo(0, 0); });
+    document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => { state.view = b.dataset.view; if (state.view === 'day') state.date = today(); if (state.view === 'week') state.weekOf = state.date; render(); scrollTo(0, 0); });
     document.querySelectorAll('[data-act]').forEach(b => b.onclick = () => act(b.dataset.act));
     document.querySelectorAll('[data-addslot]').forEach(b => b.onclick = () => openModal({ type: 'add', slot: b.dataset.addslot, tab: 'foods' }));
     document.querySelectorAll('[data-entry]').forEach(b => b.onclick = () => {
