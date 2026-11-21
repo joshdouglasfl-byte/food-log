@@ -607,14 +607,15 @@
       <section class="card"><h2>About</h2><div class="sub" style="margin:0">App version ${esc(load('version', '?'))} · Data: Food_Log sheet · ${state.data.foods.length.toLocaleString()} foods</div><button class="news-line" data-act="news">What's new${newsUnread() ? '<i class="news-dot" aria-label="unread"></i>' : ''}<span>›</span></button></section>`;
   }
 
-  // ---------- Apple Watch shortcut ----------
-  // The iPhone "Log Watch Workout" shortcut posts addExercise (Source 'Apple Watch', id AW-<start>) to the sheet script.
+  // ---------- Apple Watch (Health Auto Export) ----------
+  // Health Auto Export on the iPhone posts workouts to the sheet script (?source=hae), which adds Source 'Apple Watch' rows (id AW-<start>).
+  const haeUrl = () => `${CFG.API_URL}?source=hae&person=${encodeURIComponent(PERSON)}&key=${encodeURIComponent(load('key', ''))}`;
   function watchCard() {
     const last = state.data.exercise.filter(e => e.source === 'Apple Watch').sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.id).localeCompare(String(a.id)))[0];
     return `<section class="card"><h2>⌚️ Apple Watch</h2>
       <div class="sub" style="text-align:left;margin:0 0 10px">Last watch workout received: ${last ? `${esc(dayLabel(last.date))}, ${esc(last.name)}, ${fmt(last.cal)} cal` : 'none yet'}</div>
-      <div class="sub" style="text-align:left;margin:0 0 10px">For setting up the iPhone shortcut: copy each value and paste it into the matching field.</div>
-      <div class="watch-copy"><button class="btn" data-act="copyurl">Copy script URL</button><button class="btn" data-act="copykey">Copy key</button><button class="btn" data-act="copyperson">Copy name (${esc(PERSON)})</button></div></section>`;
+      <div class="sub" style="text-align:left;margin:0 0 10px">For Health Auto Export: copy this and paste it as the URL of its REST API automation. It's ${esc(PERSON)}'s own link.</div>
+      <div class="watch-copy"><button class="btn" data-act="copyhae">Copy Health Auto Export URL</button></div></section>`;
   }
   async function copyText(t, label) {
     try { await navigator.clipboard.writeText(t); toast(`${label} copied`); }
@@ -1062,9 +1063,7 @@
     else if (a === 'addex') return openModal({ type: 'ex' });
     else if (a === 'copyday') return openModal({ type: 'copy' });
     else if (a === 'news') return openNews();
-    else if (a === 'copyurl') return copyText(CFG.API_URL || '', 'Script URL');
-    else if (a === 'copykey') return copyText(load('key', '') || '', 'Key');
-    else if (a === 'copyperson') return copyText(PERSON, 'Name');
+    else if (a === 'copyhae') return copyText(haeUrl(), 'Health Auto Export URL');
     else if (a === 'refresh') { toast('Syncing…'); return refresh(); }
     else if (a === 'done') {
       setDayFlag({ done: true });

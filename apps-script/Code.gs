@@ -13,6 +13,9 @@ function doGet(e) { return handle_(e.parameter || {}); }
 function doPost(e) {
   let body = {};
   try { body = JSON.parse(e.postData.contents || '{}'); } catch (err) { return out_({ ok: false, error: 'bad json' }); }
+  // Health Auto Export (iPhone) can't send our JSON shape, so its key/person ride in the URL: ?source=hae&person=Josh&key=...
+  const q = (e && e.parameter) || {};
+  if (q.source === 'hae') return handle_({ action: 'haeWorkouts', key: q.key, person: q.person, hae: body });
   return handle_(body);
 }
 
@@ -33,6 +36,7 @@ function handle_(p) {
       case 'setDay': return out_(setDay_(p));
       case 'saveSettings': return out_(saveSettings_(p));
       case 'addFeedback': return out_(addFeedback_(p));
+      case 'haeWorkouts': return out_(haeWorkouts_(p));
       // generic actions: new features use these, so the script rarely needs redeploying
       case 'read': return out_(gRead_(p));
       case 'append': return out_(gAppend_(p));
@@ -234,6 +238,49 @@ function addExercise_(p) {
   ensureDay_(p.person, e.date, p.budget);
   return { ok: true, id };
 }
+// ---------- Apple Watch workouts from Health Auto Export ----------
+// Watch workout name -> Food Log activity. Names not listed are kept as the watch names them.
+const HAE_ACTIVITY = {
+  'Traditional Strength Training': 'Weight Lifting', 'Functional Strength Training': 'Weight Lifting',
+  'Outdoor Cycle': 'Bicycling', 'Indoor Cycle': 'Bicycling', 'Cycling': 'Bicycling',
+  'Golf': 'Golf', 'Outdoor Walk': 'Walking', 'Indoor Walk': 'Walking', 'Walking': 'Walking',
+  'Elliptical': 'Elliptical', 'Outdoor Run': 'Run neighborhood', 'Running': 'Run neighborhood',
+  'Core Training': 'Core Fusion', 'Bowling': 'Bowling', 'Fishing': 'Fishing'
+};
+/** Health Auto Export REST payload {data:{workouts:[...]}} -> Exercise rows (Source 'Apple Watch', id AW-<start>). Repeats are skipped. */
+function haeWorkouts_(p) {
+  if (p.person !== 'Josh' && p.person !== 'Michelle') return { ok: false, error: 'person must be Josh or Michelle' };
+  const ws = (p.hae && p.hae.data && p.hae.data.workouts) || [];
+  let added = 0, skipped = 0;
+  ws.forEach(w => {
+    const start = haeDate_(w.start), end = haeDate_(w.end);
+    const cal = Math.round(haeKcal_(w.activeEnergyBurned) || haeKcal_(w.activeEnergy) || 0);
+    if (!start || cal <= 0) { skipped++; return; }
+    const secs = Number(w.duration) || (end ? (end - start) / 1000 : 0);
+    const id = 'AW-' + Utilities.formatDate(start, TZ, 'yyyyMMddHHmm');
+    const name = HAE_ACTIVITY[String(w.name || '').trim()] || String(w.name || 'Workout').trim();
+    if (findRowById_(TABS.exercise, 'EntryID', id)) { skipped++; return; }
+    addExercise_({ person: p.person, entry: { id, date: Utilities.formatDate(start, TZ, 'yyyy-MM-dd'), name,
+      min: Math.max(1, Math.round(secs / 60)), cal, source: 'Apple Watch' } });
+    added++;
+  });
+  return { ok: true, received: ws.length, added, skipped };
+}
+// "2026-11-21 10:05:00 -0500" (or ISO) -> Date
+function haeDate_(s) {
+  if (!s) return null;
+  const m = String(s).match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2})?)\s*([+-]\d{2}):?(\d{2})?$/);
+  const d = m ? new Date(`${m[1]}T${m[2].length === 5 ? m[2] + ':00' : m[2]}${m[3]}:${m[4] || '00'}`) : new Date(s);
+  return isNaN(d) ? null : d;
+}
+// {qty, units} (kcal or kJ), or a list of samples to add up
+function haeKcal_(v) {
+  if (!v) return 0;
+  if (Array.isArray(v)) return v.reduce((t, x) => t + haeKcal_(x), 0);
+  const q = Number(v.qty) || 0;
+  return /kj/i.test(String(v.units || '')) ? q / 4.184 : q;
+}
+
 function deleteExercise_(p) {
   const r = findRowById_(TABS.exercise, 'EntryID', p.id);
   if (r) sh_(TABS.exercise).deleteRow(r);
