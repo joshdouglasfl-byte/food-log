@@ -33,6 +33,11 @@ function handle_(p) {
       case 'setDay': return out_(setDay_(p));
       case 'saveSettings': return out_(saveSettings_(p));
       case 'addFeedback': return out_(addFeedback_(p));
+      // generic actions: new features use these, so the script rarely needs redeploying
+      case 'read': return out_(gRead_(p));
+      case 'append': return out_(gAppend_(p));
+      case 'update': return out_(gUpdate_(p));
+      case 'delete': return out_(gDelete_(p));
       default: return out_({ ok: false, error: 'unknown action' });
     }
   } catch (err) {
@@ -262,5 +267,91 @@ function addFeedback_(p) {
   const r = s.getLastRow() + 1;
   s.getRange(r, 1, 1, 7).setValues([[toDate_(f.date), f.time, p.person, f.to, f.message, 'New', f.id]]);
   s.getRange(r, 1).setNumberFormat('yyyy-mm-dd');
+  return { ok: true };
+}
+
+// ---------- generic table API ----------
+// Rows are objects keyed by header name. The ID column is "EntryID", "ID", or a first column ending in "ID".
+// A string value starting with "=" is written as a formula; "{r}" in it becomes the row number.
+function gSheet_(tab, headers) {
+  if (!tab || /[\[\]*?:\/\\]/.test(tab)) throw new Error('bad tab');
+  const ss = SpreadsheetApp.getActive();
+  let s = ss.getSheetByName(tab);
+  if (!s) {
+    if (!headers || !headers.length) throw new Error('no such tab: ' + tab);
+    s = ss.insertSheet(tab);
+    s.getRange(1, 1, 1, headers.length).setValues([headers])
+      .setFontWeight('bold').setFontColor('#FFFFFF').setBackground('#2F5D50');
+    s.setFrozenRows(1);
+  }
+  return s;
+}
+function gHeader_(s) { return s.getRange(1, 1, 1, Math.max(s.getLastColumn(), 1)).getValues()[0].map(String); }
+function gIdCol_(h) {
+  let i = h.indexOf('EntryID'); if (i < 0) i = h.indexOf('ID');
+  if (i < 0 && /ID$/.test(h[0])) i = 0;
+  return i; // 0-based, -1 if none
+}
+function gAddCols_(s, h, keys) {
+  keys.filter(k => h.indexOf(k) < 0).forEach(k => {
+    if (h.length + 1 > s.getMaxColumns()) s.insertColumnsAfter(s.getMaxColumns(), 1);
+    s.getRange(1, h.length + 1).setValue(k).setFontWeight('bold').setFontColor('#FFFFFF').setBackground('#2F5D50');
+    h.push(k);
+  });
+  return h;
+}
+function gCell_(v, r) {
+  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) return toDate_(v);
+  if (typeof v === 'string' && v.charAt(0) === '=') return v.replace(/\{r\}/g, r);
+  return v === null || v === undefined ? '' : v;
+}
+function gOut_(v) { return v instanceof Date ? (v.getHours() || v.getMinutes() ? Utilities.formatDate(v, TZ, "yyyy-MM-dd'T'HH:mm") : ymd_(v)) : v; }
+
+/** read: {tab, person?, since?, limit?} -> rows as objects */
+function gRead_(p) {
+  const s = gSheet_(p.tab); const v = s.getDataRange().getValues(); const h = v.shift().map(String);
+  const pi = h.indexOf('Person'), di = h.indexOf('Date');
+  let rows = v.filter(r => r.some(x => x !== ''));
+  if (p.person && pi >= 0) rows = rows.filter(r => r[pi] === p.person);
+  if (p.since && di >= 0) rows = rows.filter(r => ymd_(r[di]) >= p.since);
+  if (p.limit) rows = rows.slice(-p.limit);
+  return { ok: true, header: h, rows: rows.map(r => Object.fromEntries(h.map((k, i) => [k, gOut_(r[i])]))) };
+}
+
+/** append: {tab, rows:[{Header: value}], headers?: [...] (to create the tab)} ; skips IDs already present */
+function gAppend_(p) {
+  const rows = p.rows || []; if (!rows.length) return { ok: true, added: 0 };
+  const s = gSheet_(p.tab, p.headers || Object.keys(rows[0]));
+  let h = gAddCols_(s, gHeader_(s), [...new Set(rows.flatMap(Object.keys))]);
+  const ic = gIdCol_(h);
+  const have = ic >= 0 && s.getLastRow() > 1 ? new Set(s.getRange(2, ic + 1, s.getLastRow() - 1, 1).getValues().flat().map(String)) : new Set();
+  let r = s.getLastRow() + 1, added = 0;
+  rows.forEach(o => {
+    if (ic >= 0 && o[h[ic]] && have.has(String(o[h[ic]]))) return;
+    s.getRange(r, 1, 1, h.length).setValues([h.map(k => gCell_(o[k], r))]);
+    h.forEach((k, i) => { if (/^\d{4}-\d{2}-\d{2}$/.test(String(o[k] || ''))) s.getRange(r, i + 1).setNumberFormat('yyyy-mm-dd'); });
+    r++; added++;
+  });
+  return { ok: true, added };
+}
+
+/** update: {tab, id, values:{Header: value}} */
+function gUpdate_(p) {
+  const s = gSheet_(p.tab); let h = gHeader_(s); const ic = gIdCol_(h);
+  if (ic < 0) throw new Error('tab has no ID column');
+  const hit = s.getRange(2, ic + 1, Math.max(s.getLastRow() - 1, 1), 1).createTextFinder(String(p.id)).matchEntireCell(true).findNext();
+  if (!hit) return { ok: false, error: 'not found' };
+  const r = hit.getRow();
+  h = gAddCols_(s, h, Object.keys(p.values || {}));
+  Object.entries(p.values || {}).forEach(([k, v]) => s.getRange(r, h.indexOf(k) + 1).setValue(gCell_(v, r)));
+  return { ok: true };
+}
+
+/** delete: {tab, id} */
+function gDelete_(p) {
+  const s = gSheet_(p.tab); const ic = gIdCol_(gHeader_(s));
+  if (ic < 0) throw new Error('tab has no ID column');
+  const hit = s.getRange(2, ic + 1, Math.max(s.getLastRow() - 1, 1), 1).createTextFinder(String(p.id)).matchEntireCell(true).findNext();
+  if (hit) s.deleteRow(hit.getRow());
   return { ok: true };
 }

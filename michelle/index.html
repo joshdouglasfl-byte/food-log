@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -10,12 +12,19 @@
 <meta name="theme-color" content="#f4f1ea">
 <title>Food Log · Michelle</title>
 <link rel="apple-touch-icon" href="../icon-180.png">
-<link rel="stylesheet" href="../app.css?v=4">
 </head>
 <body>
 <div id="app"></div>
 <script>window.FL_PERSON = 'Michelle';</script>
-<script src="../config.js?v=4"></script>
-<script src="../app.js?v=4"></script>
+<script>
+// Always load the newest app files (never a cached copy)
+(function () {
+  var t = Date.now(), d = document;
+  var css = d.createElement('link'); css.rel = 'stylesheet'; css.href = '../app.css?t=' + t; d.head.appendChild(css);
+  var cfg = d.createElement('script'); cfg.src = '../config.js?t=' + t;
+  cfg.onload = function () { var a = d.createElement('script'); a.src = '../app.js?t=' + t; d.body.appendChild(a); };
+  d.body.appendChild(cfg);
+})();
+</script>
 </body>
 </html>

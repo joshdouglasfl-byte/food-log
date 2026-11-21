@@ -530,7 +530,8 @@
     }
     if (a === 'tellsave') {
       const msg = ($('#tellmsg').value || '').trim(); if (!msg) return toast('Type or dictate a message');
-      enqueue('addFeedback', { entry: { id: uid('T'), date: today(), time: nowHM(), to: m.to, message: msg } });
+      enqueue('append', { tab: 'Feedback', headers: ['Date', 'Time', 'Person', 'For', 'Message', 'Status', 'EntryID'],
+        rows: [{ Date: today(), Time: nowHM(), Person: PERSON, For: m.to, Message: msg, Status: 'New', EntryID: uid('T') }] });
       closeModal(); return toast(`Saved for your ${m.to.toLowerCase()}`);
     }
     if (a === 'exdel') {
@@ -544,7 +545,22 @@
   render();
   refresh();
   let openedOn = today();
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) { if (openedOn !== today()) { openedOn = today(); state.date = today(); } refresh(); } });
+  async function checkVersion() {
+    try {
+      const v = await (await fetch('../version.json?t=' + Date.now(), { cache: 'no-store' })).json();
+      const seen = load('version', null);
+      if (seen && v.version !== seen && !state.queue.length && !state.modal) { save('version', v.version); location.reload(); return true; }
+      save('version', v.version);
+    } catch (e) {}
+    return false;
+  }
+  document.addEventListener('visibilitychange', async () => {
+    if (document.hidden) return;
+    if (await checkVersion()) return;
+    if (openedOn !== today()) { openedOn = today(); state.date = today(); }
+    refresh();
+  });
+  checkVersion();
   window.addEventListener('online', flush);
   window.FL_DEBUG = { state, I, suggestions, rewards };
 })();
