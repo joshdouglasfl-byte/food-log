@@ -2,7 +2,7 @@
  "entries": [
   {
    "date": "2026-11-21",
-   "version": "20261121114834",
+   "version": "20261121115846",
    "items": [
     "What's new: this list, opened from the bottom of Settings, with a green dot when there's something you haven't read",
     "App version now shows right away on a fresh install instead of \"?\"",
@@ -15,7 +15,8 @@
     "Removed the big + from the bottom bar; add food and exercise from their sections on the Day screen",
     "The Day tab is now Today and always jumps back to today, even after opening another day from Week",
     "Plan chart: bigger dark numbers above the bars, always clear of the average-day line, with the average shown in the legend",
-    "Progress has a Weight / Fat mass toggle, each with its own goal, target date, pace and projection; it remembers which one you last viewed"
+    "Progress has a Weight / Fat mass toggle, each with its own goal, target date, pace and projection; it remembers which one you last viewed",
+    "Progress chart text is darker and a bit bigger, and the goal label moves to a clear spot so it never sits on the lines"
    ]
   },
   {

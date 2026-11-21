@@ -549,9 +549,24 @@
     svg += pts.map(x => `<circle cx="${X(x.d)}" cy="${Y(x.v)}" r="${pts.length > 120 ? 1.4 : 2.2}" class="raw"/>`).join('');
     svg += `<path d="${line(avg)}" class="avg"/>`;
     if (showGoal) {
-      svg += `<line x1="${L}" x2="${W - R}" y1="${Y(goal)}" y2="${Y(goal)}" class="goal"/><text x="${W - R}" y="${Y(goal) - 4}" text-anchor="end" class="ax goalt">goal ${goal}</text>`;
+      svg += `<line x1="${L}" x2="${W - R}" y1="${Y(goal)}" y2="${Y(goal)}" class="goal"/>`;
       if (gdate && gdate > t) svg += `<path d="M${X(t)},${Y(cur)} L${X(gdate)},${Y(goal)}" class="need"/>`;
-      if (pace != null) { const end = gdate && gdate > t ? gdate : addDays(t, 28); svg += `<path d="M${X(t)},${Y(cur)} L${X(end)},${Y(cur + pace * daysBetween(t, end) / 7)}" class="pace"/>`; }
+      const segs = [];
+      if (gdate && gdate > t) segs.push([X(t), Y(cur), X(gdate), Y(goal)]);
+      if (pace != null) { const end = gdate && gdate > t ? gdate : addDays(t, 28); const py = Y(cur + pace * daysBetween(t, end) / 7); svg += `<path d="M${X(t)},${Y(cur)} L${X(end)},${py}" class="pace"/>`; segs.push([X(t), Y(cur), X(end), py]); }
+      // place "goal N" where nothing is drawn: try left, middle, right, above then below the goal line
+      const obs = pts.map(x => [X(x.d), Y(x.v)]).concat(avg.map(x => [X(x.d), Y(x.v)]));
+      segs.forEach(([x1, y1, x2, y2]) => { for (let k = 0; k <= 40; k++) obs.push([x1 + (x2 - x1) * k / 40, y1 + (y2 - y1) * k / 40]); });
+      const txt = `goal ${goal}`, tw = txt.length * 6.6 + 4, th = 13, gy = Y(goal);
+      let best = null;
+      for (const [x0, anchor] of [[L + 4, 'start'], [(L + W - R) / 2 - tw / 2, 'start'], [W - R - tw, 'start']]) for (const above of [true, false]) {
+        const y0 = above ? gy - 5 - th : gy + 5;
+        if (y0 < T - 6 || y0 + th > H - B + 2) continue;
+        const hits = obs.filter(([ox, oy]) => ox >= x0 - 4 && ox <= x0 + tw + 4 && oy >= y0 - 4 && oy <= y0 + th + 4).length;
+        if (!best || hits < best.hits) best = { hits, x: x0, y: y0 + th - 3 };
+        if (hits === 0) break;
+      }
+      if (best) svg += `<text x="${best.x.toFixed(1)}" y="${best.y.toFixed(1)}" class="ax goalt">${txt}</text>`;
     }
     svg += `<text x="${L}" y="${H - 6}" class="ax">${esc(parse(d0).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }))}</text><text x="${W - R}" y="${H - 6}" text-anchor="end" class="ax">${esc(parse(dEnd).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }))}</text></svg>`;
     // period summary
