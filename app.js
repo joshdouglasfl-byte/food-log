@@ -31,7 +31,7 @@
   // API key: ?k=... on first visit, then remembered on this device
   (() => {
     const u = new URL(location.href); const k = u.searchParams.get('k');
-    if (k) { save('key', k); u.searchParams.delete('k'); history.replaceState(null, '', u.toString()); }
+    if (k) save('key', k);
   })();
 
   const state = {
@@ -74,12 +74,13 @@
   async function refresh() {
     try {
       await flush();
-      const res = await fetch(`${CFG.API_URL}?action=bootstrap&person=${encodeURIComponent(PERSON)}&key=${encodeURIComponent(load('key', ''))}`);
+      const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), 45000);
+      const res = await fetch(`${CFG.API_URL}?action=bootstrap&person=${encodeURIComponent(PERSON)}&key=${encodeURIComponent(load('key', ''))}`, { signal: ctl.signal }); clearTimeout(tm);
       const j = await res.json();
       if (!j.ok) throw new Error(j.error);
       if (state.queue.length) return; // don't overwrite unsynced local changes
       state.data = j; persist(); state.error = ''; render();
-    } catch (e) { state.error = String(e.message || e); renderSync(); }
+    } catch (e) { state.error = String(e.message || e); if (state.data) renderSync(); else render(); }
   }
   const persist = () => { save('data', state.data); idx = null; };
 
@@ -200,7 +201,7 @@
 
   // ---------- rendering ----------
   function render() {
-    if (!state.data) { $('#app').innerHTML = `<div class="wrap"><div class="card">${state.error ? 'Couldn’t load: ' + esc(state.error) : 'Loading your log…'}</div></div>`; renderSync(); return; }
+    if (!state.data) { $('#app').innerHTML = `<div class="wrap" style="padding-top:40px"><div class="card">${state.error ? 'Couldn’t load: ' + esc(state.error) + '<br><br><button class="btn" onclick="location.reload()">Try again</button>' : 'Loading your log…'}</div></div>`; return; }
     const v = state.view;
     $('#app').innerHTML = header() + `<main class="wrap">${v === 'day' ? dayView() : v === 'week' ? weekView() : settingsView()}</main>` + nav();
     renderSync(); bind();
