@@ -32,6 +32,7 @@ function handle_(p) {
       case 'deleteExercise': return out_(deleteExercise_(p));
       case 'setDay': return out_(setDay_(p));
       case 'saveSettings': return out_(saveSettings_(p));
+      case 'addFeedback': return out_(addFeedback_(p));
       default: return out_({ ok: false, error: 'unknown action' });
     }
   } catch (err) {
@@ -242,5 +243,24 @@ function saveSettings_(p) {
     const c = P.header.indexOf(k);
     if (c >= 0) P.sheet.getRange(i + 2, c + 1).setValue(v);
   });
+  return { ok: true };
+}
+
+// ---------- feedback ("Tell my dietitian" / "Tell my developer") ----------
+function addFeedback_(p) {
+  const ss = SpreadsheetApp.getActive();
+  let s = ss.getSheetByName('Feedback');
+  if (!s) {
+    s = ss.insertSheet('Feedback');
+    s.getRange(1, 1, 1, 7).setValues([['Date', 'Time', 'Person', 'For', 'Message', 'Status', 'EntryID']])
+      .setFontWeight('bold').setFontColor('#FFFFFF').setBackground('#2F5D50');
+    s.setFrozenRows(1); s.setColumnWidth(5, 480);
+  }
+  const f = p.entry;
+  const ids = s.getRange(1, 7, s.getLastRow(), 1).getValues().flat();
+  if (ids.indexOf(f.id) >= 0) return { ok: true };
+  const r = s.getLastRow() + 1;
+  s.getRange(r, 1, 1, 7).setValues([[toDate_(f.date), f.time, p.person, f.to, f.message, 'New', f.id]]);
+  s.getRange(r, 1).setNumberFormat('yyyy-mm-dd');
   return { ok: true };
 }

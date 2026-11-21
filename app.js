@@ -258,6 +258,7 @@
     h += x.done
       ? `<button class="btn big ghost" data-act="undone">✓ Done for the day · tap to reopen</button>`
       : `<button class="btn big done" data-act="done">I'm done logging today</button>`;
+    h += `<div class="tell"><button data-tell="Dietitian">💬 Tell my dietitian</button><button data-tell="Developer">🛠 Tell my developer</button></div>`;
     return h;
   }
   const entryKey = l => l.id || `${l.date}|${l.meal}|${l.name}|${l.qty}`;
@@ -304,7 +305,7 @@
       o.addEventListener('click', e => { if (e.target === o) closeModal(); }); }
     const m = state.modal;
     const body = m.type === 'add' ? addSheet(m) : m.type === 'food' ? foodSheet(m) : m.type === 'entry' ? entrySheet(m)
-      : m.type === 'quick' ? quickSheet(m) : m.type === 'ex' ? exSheet(m) : m.type === 'meal' ? mealSheet(m) : '';
+      : m.type === 'quick' ? quickSheet(m) : m.type === 'ex' ? exSheet(m) : m.type === 'meal' ? mealSheet(m) : m.type === 'tell' ? tellSheet(m) : '';
     const keepSearch = $('#q') && document.activeElement === $('#q');
     const pos = keepSearch ? $('#q').selectionStart : null;
     o.innerHTML = `<div class="sheet">${body}</div>`;
@@ -386,6 +387,14 @@
       <button class="btn big" data-m="mealsave">Add all</button></div>`;
   }
 
+  function tellSheet(m) {
+    const hint = m.to === 'Dietitian' ? 'How you’re feeling, what’s working, what to change in the plan.' : 'A bug, an idea, or something that’s awkward to use.';
+    return head('Tell my ' + m.to.toLowerCase()) + `<div class="sheet-body">
+      <div class="sub" style="text-align:left">${hint} Tap the mic on the keyboard to dictate.</div>
+      <textarea id="tellmsg" class="search" rows="5" style="resize:vertical"></textarea>
+      <button class="btn big" data-m="tellsave">Send</button></div>`;
+  }
+
   // ---------- actions ----------
   function addEntries(entries) {
     entries.forEach(e => { e.id = uid('L'); e.date = state.date; e.time = state.date === today() ? nowHM() : ''; state.data.log.push(e); });
@@ -425,6 +434,7 @@
     });
     document.querySelectorAll('[data-ex]').forEach((b, i) => b.onclick = () => openModal({ type: 'ex', entry: (I().exByDate.get(state.date) || [])[i] }));
     document.querySelectorAll('[data-water]').forEach(b => b.onclick = () => setDayFlag({ water: Math.max(0, dayTotals(state.date).water + Number(b.dataset.water)) }));
+    document.querySelectorAll('[data-tell]').forEach(b => b.onclick = () => openModal({ type: 'tell', to: b.dataset.tell }));
     document.querySelectorAll('[data-goto]').forEach(b => b.onclick = () => { state.date = b.dataset.goto; state.view = 'day'; render(); });
     document.querySelectorAll('[data-slot]').forEach(b => b.onclick = () => {
       const s = b.dataset.slot, cur = visibleSlots();
@@ -517,6 +527,11 @@
       const e = { id: uid('X'), date: state.date, name, min: Number($('#xmin').value) || null, cal, source: 'Manual' };
       state.data.exercise.push(e); ensureLocalDay(state.date); persist();
       enqueue('addExercise', { entry: e, budget: budgetFor(state.date) }); closeModal(); return render();
+    }
+    if (a === 'tellsave') {
+      const msg = ($('#tellmsg').value || '').trim(); if (!msg) return toast('Type or dictate a message');
+      enqueue('addFeedback', { entry: { id: uid('T'), date: today(), time: nowHM(), to: m.to, message: msg } });
+      closeModal(); return toast(`Saved for your ${m.to.toLowerCase()}`);
     }
     if (a === 'exdel') {
       const e = m.entry; state.data.exercise = state.data.exercise.filter(x => x !== e); persist();
