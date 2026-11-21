@@ -2,8 +2,9 @@
  "entries": [
   {
    "date": "2026-11-21",
-   "version": "20261121115846",
+   "version": "20261121122023",
    "items": [
+    "Settings has a new Apple Watch card: copy buttons for setting up the iPhone shortcut, and the last watch workout received",
     "What's new: this list, opened from the bottom of Settings, with a green dot when there's something you haven't read",
     "App version now shows right away on a fresh install instead of \"?\"",
     "Add exercise works like food: pick from your regular activities (most used first), search, or type a new one",

@@ -40,3 +40,8 @@ Done: phases 1-2, plan view (Mifflin-St Jeor x1.2 + manual adjustment + weekly g
 - Settings tab (view 'prefs', ⚙️) replaced the Sync nav button: Sync card, Meal sections, Extras, About. Plan (view 'settings') keeps plan, progress, level, badges.
 - Removed the + nav button 2026-11-21 (Josh may revisit as a quick-add: Food by time of day / Scan / Exercise, for today). The 'add' act handler is still in app.js.
 - Progress card: Weight / Fat mass toggle (localStorage progMetric). Goals in Profiles: 'Fat mass goal (lb)' + 'Goal date', 'Weight goal (lb)' + 'Weight goal date' (columns P:Q added 2026-11-21).
+
+## Apple Watch workouts (2026-11-21, no redeploy)
+- Each person's iPhone runs a "Log Watch Workout" shortcut from an "Apple Watch Workout ends" automation (one automation per workout type, passing the Activity name). It POSTs the existing `addExercise` action: `{key, action:'addExercise', person, entry:{id:'AW-<start yyyyMMddHHmm>', date, name, min, cal, source:'Apple Watch'}}`. addExercise skips an id already present and makes the Days row. Calories = sum of Active Energy samples between the workout's start and end.
+- Settings > Apple Watch card: last Apple Watch row received + copy buttons (script URL, key, name) for building the shortcut.
+- Workout Buddy setting `Watch Calories` = `Shortcut` (per person) stops its keypad; loseit-dietitian mirrors Josh's Apple Watch rows to Lose It!, drops planned rows they replace, and flags shortcut sessions that never arrived.
