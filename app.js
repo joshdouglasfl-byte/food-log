@@ -195,7 +195,7 @@
       if (l.time) { const lh = Number(l.time.slice(0, 2)); if (Math.abs(lh - hr) <= 2) w *= 1.4; }
       score.set(l.food, (score.get(l.food) || 0) + w);
       const prev = lastQty.get(l.food);
-      if (!prev || prev.date <= l.date) lastQty.set(l.food, { date: l.date, qty: l.qty });
+      if (!prev || prev.date <= l.date) lastQty.set(l.food, { date: l.date, qty: l.qty, unit: l.unit });
     }
     return { score, lastQty };
   }
@@ -539,6 +539,36 @@
       <button class="btn big" data-m="quicksave">Add as estimate</button>
       <div class="sub" style="margin-top:10px">Claude finds the restaurant's posted numbers (or similar items) and fixes the entry.</div>`;
   }
+  // ---------- unit families (convertible units, like Lose It!) ----------
+  const FAMILIES = {
+    weight: { Gram: 1, Ounce: 28.3495, Pound: 453.592, Kilogram: 1000 },
+    volume: { Teaspoon: 4.929, Tablespoon: 14.787, 'Fluid Ounce': 29.574, Cup: 236.59, Milliliter: 1, Liter: 1000 }
+  };
+  const UNIT_ALIAS = { gram: 'Gram', grams: 'Gram', g: 'Gram', ounce: 'Ounce', ounces: 'Ounce', oz: 'Ounce', pound: 'Pound', pounds: 'Pound', lb: 'Pound',
+    kilogram: 'Kilogram', kg: 'Kilogram', teaspoon: 'Teaspoon', teaspoons: 'Teaspoon', tsp: 'Teaspoon', tablespoon: 'Tablespoon', tablespoons: 'Tablespoon', tbsp: 'Tablespoon',
+    'fluid ounce': 'Fluid Ounce', 'fluid ounces': 'Fluid Ounce', 'fl oz': 'Fluid Ounce', cup: 'Cup', cups: 'Cup', milliliter: 'Milliliter', ml: 'Milliliter', liter: 'Liter', l: 'Liter' };
+  const canonUnit = u => UNIT_ALIAS[String(u || '').toLowerCase().trim()] || u;
+  function familyOf(u) { const c = canonUnit(u); for (const [k, m] of Object.entries(FAMILIES)) if (m[c]) return { name: k, map: m, unit: c }; return null; }
+  // amount in `unit` expressed in the food's own unit (null if they can't convert)
+  function toFoodUnits(f, qty, unit) {
+    if (!unit || canonUnit(unit) === canonUnit(f.unit)) return Number(qty) || 0;
+    const a = familyOf(unit), b = familyOf(f.unit);
+    if (!a || !b || a.name !== b.name) return Number(qty) || 0;
+    return (Number(qty) || 0) * a.map[a.unit] / b.map[b.unit];
+  }
+  function nutrFor(f, qty, unit) {
+    const k = toFoodUnits(f, qty, unit) / f.per, n = v => v == null ? null : v * k;
+    return { cal: f.cal * k, pro: n(f.pro), fib: n(f.fib), carb: n(f.carb), fat: n(f.fat) };
+  }
+  const FRACTIONS = [['¼', .25], ['⅓', 1 / 3], ['½', .5], ['⅔', 2 / 3], ['¾', .75]];
+  function amountControls(f, qty, unit, idQ, idU) {
+    const fam = familyOf(f.unit);
+    const sel = fam ? `<select id="${idU}" class="unit-sel">${Object.keys(fam.map).map(u => `<option ${u === canonUnit(unit || f.unit) ? 'selected' : ''}>${u}</option>`).join('')}</select>` : `<span class="unit-fixed">${esc(f.unit)}</span>`;
+    const fr = fam ? '' : `<div class="fracs">${FRACTIONS.map(([t, v]) => `<button class="btn ghost" data-frac="${v}">${t}</button>`).join('')}</div>`;
+    return `<div class="field"><label>Amount</label><div class="stepper"><button class="btn ghost" data-step="-1">−</button><input id="${idQ}" type="number" inputmode="decimal" step="any" value="${esc(+Number(qty).toFixed(2))}"><button class="btn ghost" data-step="1">+</button></div>
+      <div class="unit-row">${sel}</div>${fr}</div>`;
+  }
+
   // ---------- unit insight ----------
   const WEIGHT_G = { gram: 1, grams: 1, g: 1, ounce: 28.35, ounces: 28.35, oz: 28.35, pound: 453.6, pounds: 453.6, lb: 453.6, kilogram: 1000, kg: 1000 };
   const normName = n => String(n || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -568,7 +598,7 @@
     ? `Protein ${r0(l.pro || 0)} g · Fiber ${r0(l.fib || 0)} g · Carbs ${r0(l.carb || 0)} g · Fat ${r0(l.fat || 0)} g` : '';
   function gramsField(f, qty, id) {
     const gpu = gramsPerUnit(f);
-    if (!gpu || String(f.unit).toLowerCase().startsWith('gram')) return '';
+    if (!gpu || familyOf(f.unit)) return '';
     return `<div class="field"><label>Or enter grams</label><input id="${id}" type="number" inputmode="decimal" step="any" value="${r0((Number(qty) || 0) * gpu)}" data-gpu="${gpu}"></div>`;
   }
 
@@ -578,7 +608,7 @@
     return head(f.name, true) + `<div class="sheet-body">
       <div class="big-cal" id="fcal">${fmt(f.cal * k)}</div><div class="sub">calories · ${esc(m.slot)}</div>
       ${unitInfo(f)}
-      <div class="field"><label>Amount (${esc(f.unit)})</label><div class="stepper"><button class="btn ghost" data-step="-1">−</button><input id="fqty" type="number" inputmode="decimal" step="any" value="${esc(qty)}"><button class="btn ghost" data-step="1">+</button></div></div>
+      ${amountControls(f, qty, m.unit, 'fqty', 'funit')}
       ${gramsField(f, qty, 'fgram')}
       <div class="sub" id="fmac">Protein ${r0((f.pro || 0) * k)} g · Fiber ${r0((f.fib || 0) * k)} g · Carbs ${r0((f.carb || 0) * k)} g · Fat ${r0((f.fat || 0) * k)} g</div>
       <button class="btn big" data-m="foodsave">Add</button></div>`;
@@ -588,7 +618,7 @@
     const editable = !!l.id;
     return head(l.name) + `<div class="sheet-body"><div class="big-cal" id="ecal">${fmt(l.cal)}</div><div class="sub">${esc(l.meal)} · ${esc(qtyText(l))}${l.est ? ' · estimate' : ''}</div>
       ${unitInfo(f)}
-      ${editable ? `<div class="field"><label>Amount (${esc(l.unit || '')})</label><div class="stepper"><button class="btn ghost" data-step="-1">−</button><input id="eqty" type="number" inputmode="decimal" step="any" value="${esc(+Number(l.qty).toFixed(2))}"><button class="btn ghost" data-step="1">+</button></div></div>
+      ${editable ? `${f ? amountControls(f, l.qty, l.unit, 'eqty', 'eunit') : `<div class="field"><label>Amount (${esc(l.unit || '')})</label><div class="stepper"><button class="btn ghost" data-step="-1">−</button><input id="eqty" type="number" inputmode="decimal" step="any" value="${esc(+Number(l.qty).toFixed(2))}"><button class="btn ghost" data-step="1">+</button></div></div>`}
         ${f ? gramsField(f, l.qty, 'egram') : ''}
         <div class="sub" id="emac">${macroText(l)}</div>
         ${!f ? `<div class="field"><label>Calories</label><input id="ecalin" type="number" inputmode="numeric" value="${r0(l.cal)}"></div>` : ''}
@@ -687,11 +717,10 @@
   function ensureLocalDay(date) {
     if (!I().dayByDate.has(date)) { state.data.days.push({ date, budget: budgetFor(date), done: false, water: 0 }); idx = null; }
   }
-  function entryFromFood(f, qty, slot) {
-    const k = (Number(qty) || 0) / f.per;
-    const rnd = v => v == null ? null : Math.round(v * k * 10) / 10;
-    return { food: f.id, meal: slot, name: f.name, qty: Number(qty), unit: f.unit, cal: Math.round(f.cal * k * 10) / 10,
-      pro: rnd(f.pro), fib: rnd(f.fib), carb: rnd(f.carb), fat: rnd(f.fat), est: !!f.est };
+  function entryFromFood(f, qty, slot, unit) {
+    const n = nutrFor(f, qty, unit), rnd = v => v == null ? null : Math.round(v * 10) / 10;
+    return { food: f.id, meal: slot, name: f.name, qty: Number(qty), unit: unit || f.unit, cal: rnd(n.cal),
+      pro: rnd(n.pro), fib: rnd(n.fib), carb: rnd(n.carb), fat: rnd(n.fat), est: !!f.est };
   }
   function setDayFlag(fields) {
     ensureLocalDay(state.date);
@@ -773,7 +802,7 @@
     const qn = $('#qname'); if (qn) qn.oninput = () => { m.qname = qn.value; };
     document.querySelectorAll('[data-food]').forEach(b => b.onclick = () => {
       const f = I().foodById.get(b.dataset.food); const lq = suggestions(m.slot, state.date).lastQty.get(f.id);
-      state.modal = { type: 'food', food: f.id, qty: lq ? +Number(lq.qty).toFixed(2) : f.per, slot: m.slot, back: m }; renderModal();
+      state.modal = { type: 'food', food: f.id, qty: lq ? +Number(lq.qty).toFixed(2) : f.per, unit: lq && familyOf(lq.unit) ? canonUnit(lq.unit) : canonUnit(f.unit), slot: m.slot, back: m }; renderModal();
       setTimeout(() => { const i = $('#fqty'); if (i) { i.focus(); i.select(); } }, 50);
     });
     document.querySelectorAll('[data-meal]').forEach(b => b.onclick = () => {
@@ -781,8 +810,8 @@
     });
     document.querySelectorAll('[data-step]').forEach(b => b.onclick = () => {
       const inp = $('#eqty') || $('#fqty'); if (!inp) return;
-      const unit = (m.entry && m.entry.unit) || (m.food && I().foodById.get(m.food)?.unit) || '';
-      const inc = /gram|ml|milliliter/i.test(unit) ? 10 : (/ounce|oz/i.test(unit) ? 0.5 : 1);
+      const unit = ($('#eunit') || $('#funit'))?.value || (m.entry && m.entry.unit) || (m.food && I().foodById.get(m.food)?.unit) || '';
+      const inc = /^(gram|milliliter)$/i.test(unit) ? 10 : (/ounce|teaspoon|tablespoon|cup|pound/i.test(unit) ? 0.5 : (/kilogram|liter/i.test(unit) ? 0.1 : 1));
       inp.value = Math.max(0, Math.round(((Number(inp.value) || 0) + inc * Number(b.dataset.step)) * 100) / 100);
       inp.dispatchEvent(new Event('input'));
     });
@@ -793,17 +822,34 @@
       q.addEventListener('input', () => { if (q.dataset.fromG) { delete q.dataset.fromG; return; } g.value = r0((Number(q.value) || 0) * gpu); });
     };
     syncG('fgram', 'fqty'); syncG('egram', 'eqty');
+    const mt = n => `Protein ${r0(n.pro || 0)} g · Fiber ${r0(n.fib || 0)} g · Carbs ${r0(n.carb || 0)} g · Fat ${r0(n.fat || 0)} g`;
     const fq = $('#fqty'); if (fq) fq.oninput = () => {
-      m.qty = fq.value; const f = I().foodById.get(m.food), k = (Number(fq.value) || 0) / f.per;
-      $('#fcal').textContent = fmt(f.cal * k);
-      $('#fmac').textContent = `Protein ${r0((f.pro || 0) * k)} g · Fiber ${r0((f.fib || 0) * k)} g · Carbs ${r0((f.carb || 0) * k)} g · Fat ${r0((f.fat || 0) * k)} g`;
+      m.qty = fq.value; const f = I().foodById.get(m.food), u = $('#funit') ? $('#funit').value : f.unit, n = nutrFor(f, fq.value, u);
+      $('#fcal').textContent = fmt(n.cal); $('#fmac').textContent = mt(n);
+    };
+    const fu = $('#funit'); if (fu) fu.onchange = () => {
+      // keep the same amount of food when switching units
+      const f = I().foodById.get(m.food), prev = m.unit || f.unit, base = toFoodUnits(f, fq.value, prev);
+      m.unit = fu.value; fq.value = Math.round(base / toFoodUnits(f, 1, fu.value) * 100) / 100; fq.dispatchEvent(new Event('input'));
     };
     const eq = $('#eqty'); if (eq) eq.oninput = () => {
       const l = m.entry, f = l.food && I().foodById.get(l.food);
-      const c = f ? f.cal / f.per * (Number(eq.value) || 0) : l.cal / (l.qty || 1) * (Number(eq.value) || 0);
-      $('#ecal').textContent = fmt(c); const ci = $('#ecalin'); if (ci) ci.value = r0(c);
-      const em = $('#emac'); if (em && f) { const k = (Number(eq.value) || 0) / f.per; em.textContent = macroText({ pro: f.pro == null ? null : f.pro * k, fib: f.fib == null ? null : f.fib * k, carb: f.carb == null ? null : f.carb * k, fat: f.fat == null ? null : f.fat * k }); }
+      if (f) {
+        const n = nutrFor(f, eq.value, $('#eunit') ? $('#eunit').value : l.unit);
+        $('#ecal').textContent = fmt(n.cal); const em = $('#emac'); if (em) em.textContent = mt(n);
+      } else {
+        const c = l.cal / (l.qty || 1) * (Number(eq.value) || 0);
+        $('#ecal').textContent = fmt(c); const ci = $('#ecalin'); if (ci) ci.value = r0(c);
+      }
     };
+    const eu = $('#eunit'); if (eu) { let prevU = eu.value; eu.onchange = () => {
+      const f = I().foodById.get(m.entry.food), base = toFoodUnits(f, eq.value, prevU);
+      eq.value = Math.round(base / toFoodUnits(f, 1, eu.value) * 100) / 100; prevU = eu.value; eq.dispatchEvent(new Event('input'));
+    }; }
+    document.querySelectorAll('[data-frac]').forEach(b => b.onclick = () => {
+      const inp = $('#eqty') || $('#fqty'); if (!inp) return;
+      inp.value = Math.round((Math.floor(Number(inp.value) || 0) + Number(b.dataset.frac)) * 1000) / 1000; inp.dispatchEvent(new Event('input'));
+    });
   }
   function modalAct(a) {
     const m = state.modal;
@@ -812,7 +858,7 @@
     if (a === 'foodsave') {
       const f = I().foodById.get(m.food), qty = Number($('#fqty').value);
       if (!(qty > 0)) return toast('Enter an amount');
-      closeModal(); return addEntries([entryFromFood(f, qty, m.slot)]);
+      closeModal(); return addEntries([entryFromFood(f, qty, m.slot, $('#funit') ? $('#funit').value : f.unit)]);
     }
     if (a === 'mealsave') {
       const es = m.group.items.map(x => {
@@ -829,7 +875,7 @@
     if (a === 'entrysave') {
       const l = m.entry, qty = Number($('#eqty').value); if (!(qty > 0)) return toast('Enter an amount');
       const f = l.food && I().foodById.get(l.food);
-      if (f) Object.assign(l, entryFromFood(f, qty, $('#emeal').value), { id: l.id, date: l.date, time: l.time });
+      if (f) Object.assign(l, entryFromFood(f, qty, $('#emeal').value, $('#eunit') ? $('#eunit').value : l.unit), { id: l.id, date: l.date, time: l.time, planned: l.planned });
       else { const ci = $('#ecalin'); l.qty = qty; l.cal = ci ? Number(ci.value) || 0 : l.cal; l.meal = $('#emeal').value; }
       persist(); enqueue('updateLog', { id: l.id, entry: l }); closeModal(); return render();
     }
