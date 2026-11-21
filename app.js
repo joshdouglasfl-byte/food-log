@@ -560,7 +560,8 @@
   const canonUnit = u => UNIT_ALIAS[String(u || '').toLowerCase().trim()] || u;
   function familyOf(u) { const c = canonUnit(u); for (const [k, m] of Object.entries(FAMILIES)) if (m[c]) return { name: k, map: m, unit: c }; return null; }
   // amount in `unit` expressed in the food's own unit (null if they can't convert)
-  const servingsFor = f => (state.data.servings || []).filter(x => x.food === f.id);
+  const servingsFor = f => { const seen = new Set();
+    return (state.data.servings || []).filter(x => x.food === f.id && !seen.has(x.unit.toLowerCase()) && seen.add(x.unit.toLowerCase())); };
   const servingOf = (f, unit) => servingsFor(f).find(x => x.unit.toLowerCase() === String(unit || '').toLowerCase().replace(/ \(.*\)$/, ''));
   function gramsToFoodUnits(f, grams) {
     const fam = familyOf(f.unit);
@@ -942,6 +943,7 @@
     if (a === 'savesv') {
       const g = Number($('#svg').value); if (!(g > 0)) return toast('Enter grams for one serving');
       const f = I().foodById.get(m.food || m.entry?.food), sv = { food: f.id, unit: 'Serving', grams: g, id: uid('S') };
+      if (servingsFor(f).some(x => x.unit === 'Serving')) { renderModal(); return toast('This food already has a serving'); }
       (state.data.servings = state.data.servings || []).push(sv); persist();
       enqueue('append', { tab: 'Servings', headers: ['FoodID', 'Unit', 'Grams', 'Note', 'EntryID'], rows: [{ FoodID: f.id, Unit: 'Serving', Grams: g, Note: 'Set in app', EntryID: sv.id }] });
       renderModal(); return toast(`Serving saved: ${g} g`);
@@ -970,6 +972,7 @@
   appStart();
   render();
   refresh();
+  if (state.data) loadServings();
   let openedOn = today();
   async function checkVersion() {
     try {
