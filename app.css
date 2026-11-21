@@ -162,3 +162,4 @@ svg.prog .need { fill: none; stroke: var(--gold); stroke-width: 2; stroke-dashar
 svg.prog .pace { fill: none; stroke: var(--blue); stroke-width: 2; stroke-dasharray: 6 4; }
 .plan-legend i.avg { background: var(--green); } .plan-legend i.need { background: var(--gold); } .plan-legend i.pace { background: var(--blue); }
 b.ok { color: var(--green); } b.bad { color: var(--over); }
+.toast-btn { margin-left: 10px; color: #f3d38a; font-weight: 800; text-decoration: underline; }

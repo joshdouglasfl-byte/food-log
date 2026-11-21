@@ -521,7 +521,8 @@
       ${editable ? `<div class="field"><label>Amount (${esc(l.unit || '')})</label><input id="eqty" type="number" inputmode="decimal" step="any" value="${esc(+Number(l.qty).toFixed(2))}"></div>
         ${!f ? `<div class="field"><label>Calories</label><input id="ecalin" type="number" inputmode="numeric" value="${r0(l.cal)}"></div>` : ''}
         <div class="field"><label>Meal</label><select id="emeal">${ALL_SLOTS.map(s => `<option ${s === l.meal ? 'selected' : ''}>${s}</option>`).join('')}</select></div>
-        ${isPlanned(l) ? '<button class="btn big done" data-m="entryate" style="margin-bottom:10px">✓ I ate this</button>' : ''}
+        ${isPlanned(l) ? '<button class="btn big done" data-m="entryate" style="margin-bottom:10px">✓ I ate this</button>'
+          : '<button class="btn big ghost" data-m="entryplan" style="margin-bottom:10px">🕒 Move back to planned</button>'}
         <button class="btn big" data-m="entrysave">Save</button><button class="danger" data-m="entrydel">Delete entry</button>`
       : `<div class="sub">Imported from Lose It!. Edit older entries in the sheet.</div>`}</div>`;
   }
@@ -624,9 +625,11 @@
     persist(); enqueue('setDay', { date: state.date, budget: budgetFor(state.date), ...fields }); render();
   }
   let toastT;
-  function toast(msg) {
+  function toast(msg, action, fn) {
     let t = $('#toast'); if (!t) { t = document.createElement('div'); t.id = 'toast'; t.className = 'toast'; document.body.appendChild(t); }
-    t.textContent = msg; t.style.display = 'block'; clearTimeout(toastT); toastT = setTimeout(() => { t.style.display = 'none'; }, 2200);
+    t.innerHTML = esc(msg) + (action ? ` <button class="toast-btn">${esc(action)}</button>` : '');
+    if (action) t.querySelector('.toast-btn').onclick = () => { t.style.display = 'none'; fn(); };
+    t.style.display = 'block'; clearTimeout(toastT); toastT = setTimeout(() => { t.style.display = 'none'; }, action ? 6000 : 2200);
   }
 
   function bind() {
@@ -645,7 +648,8 @@
     const wk = $('#wkndsel'); if (wk) wk.onchange = () => { const v = Number(wk.value); savePlan({ 'Weekend adjustment (cal)': v, 'Weekday adjustment (cal)': -Math.round(v * 2 / 5) }); };
     document.querySelectorAll('[data-confirm]').forEach(b => b.onclick = () => {
       const es = (I().logByDate.get(state.date) || []).filter(l => l.meal === b.dataset.confirm && isPlanned(l));
-      es.forEach(l => markPlanned(l, false)); render(); toast(`${es.length} item${es.length === 1 ? '' : 's'} confirmed`);
+      es.forEach(l => markPlanned(l, false)); render();
+      toast(`${es.length} item${es.length === 1 ? '' : 's'} confirmed`, 'Undo', () => { es.forEach(l => markPlanned(l, true)); render(); });
     });
     document.querySelectorAll('[data-tell]').forEach(b => b.onclick = () => openModal({ type: 'tell', to: b.dataset.tell }));
     document.querySelectorAll('[data-goto]').forEach(b => b.onclick = () => { state.date = b.dataset.goto; state.view = 'day'; render(); });
@@ -738,7 +742,8 @@
       else { const ci = $('#ecalin'); l.qty = qty; l.cal = ci ? Number(ci.value) || 0 : l.cal; l.meal = $('#emeal').value; }
       persist(); enqueue('updateLog', { id: l.id, entry: l }); closeModal(); return render();
     }
-    if (a === 'entryate') { markPlanned(m.entry, false); closeModal(); render(); return toast('Confirmed'); }
+    if (a === 'entryate') { const l = m.entry; markPlanned(l, false); closeModal(); render(); return toast('Confirmed', 'Undo', () => { markPlanned(l, true); render(); }); }
+    if (a === 'entryplan') { const l = m.entry; markPlanned(l, true); closeModal(); render(); return toast('Moved back to planned', 'Undo', () => { markPlanned(l, false); render(); }); }
     if (a === 'entrydel') {
       const l = m.entry; state.data.log = state.data.log.filter(x => x !== l); persist();
       enqueue('deleteLog', { id: l.id }); closeModal(); render(); return toast('Deleted');
