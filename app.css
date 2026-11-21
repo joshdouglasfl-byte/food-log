@@ -195,3 +195,6 @@ b.ok { color: var(--green); } b.bad { color: var(--over); }
 .vline span { position: absolute; left: 0; top: -17px; font-size: .7rem; color: var(--muted); background: var(--card); padding: 0 3px; }
 .plan-legend i.hi { background: var(--gold); } .plan-legend i.avgl { background: none; border-top: 2px dashed rgba(31,42,36,.45); height: 0; }
 input, textarea, select { -webkit-user-select: text; user-select: text; }
+.svq { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
+.svq span { color: var(--muted); font-size: .85rem; font-weight: 600; min-width: 64px; }
+.svq .btn { flex: 1; padding: 9px 0; }

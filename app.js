@@ -619,6 +619,12 @@
     const opts = fam ? Object.keys(fam.map) : [f.unit];
     return opts.concat(sv.map(x => x.unit));
   }
+  // one-tap serving counts when a food has a saved serving
+  function svq(f) {
+    const sv = servingsFor(f).find(x => x.unit.toLowerCase() !== String(f.unit).toLowerCase());
+    if (!sv) return '';
+    return `<div class="svq"><span>${esc(sv.unit)}s:</span>${[1, 2, 3, 4].map(n => `<button class="btn ghost" data-svq="${n}" data-svu="${esc(sv.unit)}">${n}</button>`).join('')}</div>`;
+  }
   function amountControls(f, qty, unit, idQ, idU) {
     const opts = unitOptions(f), cur = servingOf(f, unit) ? servingOf(f, unit).unit : canonUnit(unit || f.unit);
     const label = u => { const sv = servingOf(f, u); return sv && u.toLowerCase() !== String(f.unit).toLowerCase() ? `${u} (${sv.grams} g)` : u; };
@@ -628,7 +634,7 @@
     const saveSv = familyOf(f.unit)?.name === 'weight' && !servingsFor(f).length
       ? `<div class="save-sv"><input id="svg" type="number" inputmode="decimal" placeholder="Serving size in grams"><button class="btn ghost" data-m="savesv">Save serving</button></div>` : '';
     return `<div class="field"><label>Amount</label><div class="stepper"><button class="btn ghost" data-step="-1">−</button><input id="${idQ}" type="number" inputmode="decimal" step="any" value="${esc(+Number(qty).toFixed(2))}"><button class="btn ghost" data-step="1">+</button></div>
-      <div class="unit-row">${sel}</div>${fr}${saveSv}</div>`;
+      <div class="unit-row">${sel}</div>${svq(f)}${fr}${saveSv}</div>`;
   }
 
   // ---------- unit insight ----------
@@ -947,6 +953,12 @@
       const f = I().foodById.get(m.entry.food), base = toFoodUnits(f, eq.value, prevU);
       eq.value = Math.round(base / toFoodUnits(f, 1, eu.value) * 100) / 100; prevU = eu.value; eq.dispatchEvent(new Event('input'));
     }; }
+    document.querySelectorAll('[data-svq]').forEach(b => b.onclick = () => {
+      const sel = $('#eunit') || $('#funit'), inp = $('#eqty') || $('#fqty'); if (!sel || !inp) return;
+      sel.value = b.dataset.svu; if (m.type === 'food') m.unit = b.dataset.svu;
+      if ($('#eunit')) sel.dispatchEvent(new Event('change'));   // keeps the edit screen's unit tracker in step
+      inp.value = b.dataset.svq; inp.dispatchEvent(new Event('input'));
+    });
     document.querySelectorAll('[data-frac]').forEach(b => b.onclick = () => {
       const inp = $('#eqty') || $('#fqty'); if (!inp) return;
       inp.value = Math.round((Math.floor(Number(inp.value) || 0) + Number(b.dataset.frac)) * 1000) / 1000; inp.dispatchEvent(new Event('input'));
