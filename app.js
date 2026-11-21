@@ -632,6 +632,9 @@
   }
 
   // ---------- start ----------
+  // iPad home-screen app: iPadOS blurs a band under the status bar; css pushes the header below it
+  const markIpad = () => document.documentElement.classList.toggle('ipad-app', (navigator.standalone === true || matchMedia('(display-mode: standalone)').matches) && Math.min(innerWidth, innerHeight) >= 700);
+  markIpad(); addEventListener('resize', markIpad);
   appStart();
   render();
   refresh();
