@@ -11,9 +11,13 @@ Lightweight calorie log for Josh (and later Michelle), replacing Lose It!. Follo
 ## Status (2026-11-20 night)
 Done: phases 1-2, plan view (Mifflin-St Jeor x1.2 + manual adjustment + weekly goal + weekend extra), week projection, Lose It! plan copied through Nov 30, Michelle's profile + Withings weigh-ins (Withings user MD, id 762641; Josh is 243567), barcode scanning (ZXing from jsdelivr + Open Food Facts), feedback tab.
 
-## Next (overnight)
-1. Rework the `loseit-dietitian` skill so the Food_Log sheet is primary. During the parallel week Josh chose **write to both**: every plan/log change goes to the sheet AND is mirrored into Lose It! (Chrome) until he says cut over.
-2. Withings -> Body tab (both people) as part of the dietitian/nightly run (Chrome, list view, attribute values to the following date line).
-3. Workout Buddy watch calories -> Food_Log Exercise tab (Source "Workout Buddy"), plus the existing Lose It! entry while mirroring. Update the hourly "Workout Buddy to Lose It! (Mac)" task and the nightly trainer catch-up to reference the skill, not repeat it.
-4. Review scheduled tasks and skills for overlap (site-login-check, workout-trainer, morning brief) per Josh's no-duplication rule.
-5. Check Feedback tab for New developer items first.
+## Done 2026-11-20 late
+- loseit-dietitian skill reworked: Food_Log sheet primary, "Mirror to Lose It!: ON", Withings -> Body for both, Workout Buddy calories -> Exercise (EntryID WB-<Row ID>), Nightly plan refresh steps moved into the skill.
+- Scheduled tasks: "Dietitian plan refresh" (was Lose It! plan refresh) and "Workout Buddy calories (sheet + Lose It!)" now just point at the skill. workout-trainer and the morning brief already delegate to the dietitian skill, so no change.
+
+## At cutover (when Josh says drop Lose It!)
+- Remove the mirror line and Lose It! sections from loseit-dietitian (consider renaming it), drop Lose It! from site-login-check and the morning brief's sign-in line, rename the hourly task.
+
+## Open
+- Barcode scan confirmed working on Josh's phone 2026-11-20.
+- Michelle's own dietitian skill (her Claude), not started.
