@@ -7,7 +7,7 @@
 const TABS = { profiles: 'Profiles', foods: 'Foods', meals: 'Meals', log: 'Log',
   exercise: 'Exercise', days: 'Days', body: 'Body', plan: 'Plan' };
 const LOG_DAYS = 365;      // history sent to the app for suggestions
-const TZ = 'America/New_York';
+const TZ = SpreadsheetApp.getActive().getSpreadsheetTimeZone() || 'America/New_York';
 
 function doGet(e) { return handle_(e.parameter || {}); }
 function doPost(e) {
@@ -54,7 +54,9 @@ function out_(o) {
 // ---------- helpers ----------
 function sh_(name) { return SpreadsheetApp.getActive().getSheetByName(name); }
 function ymd_(d) { return d instanceof Date ? Utilities.formatDate(d, TZ, 'yyyy-MM-dd') : String(d || ''); }
-function toDate_(s) { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); }
+// Dates are written as 'yyyy-mm-dd' text, which the sheet parses in its own time zone.
+// (A Date object built here would use the script's time zone and can land on the previous day.)
+function toDate_(s) { return /^\d{4}-\d{2}-\d{2}$/.test(String(s)) ? String(s) : s; }
 function rows_(name) {
   const s = sh_(name); const v = s.getDataRange().getValues();
   const h = v.shift(); return { sheet: s, header: h, rows: v };
