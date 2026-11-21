@@ -181,3 +181,7 @@ b.ok { color: var(--green); } b.bad { color: var(--over); }
 .entry.planned .ate-btn { opacity: 1; }
 .save-sv { display: flex; gap: 8px; margin-top: 8px; }
 .save-sv input { flex: 1; min-width: 0; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); font-size: 1rem; }
+.dow { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.dow button { padding: 12px 0; border-radius: 10px; border: 1.5px solid var(--green); color: var(--green); font-weight: 650; background: var(--card); }
+.dow button.on { background: var(--green); color: #fff; }
+.xtra-in { padding: 10px 6px; border-radius: 10px; border: 1.5px solid var(--green); text-align: center; font: inherit; font-weight: 650; min-width: 0; }

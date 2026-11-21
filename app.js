@@ -161,11 +161,22 @@
     const burn = sedentary + manual;
     const goal = Number(p['Weekly goal (lb/week)']) || 0;
     const daily = goal * 3500 / 7;
-    const wkndExtra = Number(p['Weekend adjustment (cal)']) || 0;
-    const wkdayAdj = Number(p['Weekday adjustment (cal)']) || 0;
     const base = burn + daily;
-    const target = base + (isWeekend(date) ? wkndExtra : wkdayAdj);
-    return { age, wt, h, sex, bmr, sedentary, manual, burn, goal, daily, base, wkndExtra, wkdayAdj, target: Math.round(target) };
+    const sch = schedule(p);
+    const target = base + sch.adj[parse(date).getDay()];
+    return { age, wt, h, sex, bmr, sedentary, manual, burn, goal, daily, base, sch, target: Math.round(target) };
+  }
+  // Calorie schedule (like Lose It!): high days get `extra` more than low days; the weekly total is unchanged
+  const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  function schedule(p) {
+    let high = String(p['High days'] || '').split(',').map(x => x.trim()).filter(x => DOW.includes(x));
+    let extra = Number(p['High day extra (cal)']) || 0;
+    if (!high.length && Number(p['Weekend adjustment (cal)'])) {   // older weekend-extra setting
+      high = ['Sat', 'Sun']; extra = Number(p['Weekend adjustment (cal)']) - (Number(p['Weekday adjustment (cal)']) || 0);
+    }
+    if (!high.length || high.length === 7 || !extra) return { high: [], extra: 0, adj: [0, 0, 0, 0, 0, 0, 0] };
+    const lowAdj = -extra * high.length / 7;
+    return { high, extra, adj: DOW.map(d => high.includes(d) ? lowAdj + extra : lowAdj) };
   }
   // Past days keep the budget they had; today and later use the plan (a dietitian Plan target overrides).
   function budgetFor(date) {
@@ -390,7 +401,7 @@
     if (!pl) return `<section class="card"><h2>My plan</h2><div class="empty">Add birthday, sex, height and a weigh-in to the Profiles and Body tabs to calculate a plan.</div></section>`;
     const goalTxt = pl.goal === 0 ? 'maintain your weight' : `${pl.goal < 0 ? 'lose' : 'gain'} ${Math.abs(pl.goal)} lb per week`;
     const ws = weekStart(today()), days = [...Array(7)].map((_, i) => addDays(ws, i));
-    const tg = days.map(d => Math.round(pl.base + (isWeekend(d) ? pl.wkndExtra : pl.wkdayAdj)));
+    const tg = days.map(d => Math.round(pl.base + pl.sch.adj[parse(d).getDay()]));
     const lo = Math.min(pl.burn, ...tg) * 0.6, mx = Math.max(pl.burn, ...tg) * 1.03, pct = v => (v - lo) / (mx - lo) * 100;
     const rows = days.map((d, i) => {
       const t = tg[i], adj = t - Math.round(pl.base);
@@ -407,7 +418,10 @@
       <div class="sub" style="margin:6px 0 0">Week total ${fmt(wk)} cal · exercise adds to each day · this week’s days already logged keep their budget</div>
       <div class="field" style="margin-top:12px"><label>Weekly goal</label><select id="goalsel">${[...new Set([...GOALS, pl.goal])].sort((a, b) => a - b).map(g => `<option value="${g}" ${g === pl.goal ? 'selected' : ''}>${g === 0 ? 'Maintain' : (g < 0 ? 'Lose ' : 'Gain ') + Math.abs(g) + ' lb a week'}</option>`).join('')}</select></div>
       <div class="field"><label>Manual adjustment to burn</label><select id="mansel">${[...new Set([-500, -400, -300, -250, -200, -150, -100, -50, 0, 50, 100, 200, 300, pl.manual])].sort((a, b) => a - b).map(v => `<option value="${v}" ${v === pl.manual ? 'selected' : ''}>${v ? (v > 0 ? '+' : '−') + Math.abs(v) + ' cal a day' : 'None'}</option>`).join('')}</select></div>
-      <div class="field"><label>Weekend extra (weekdays give it back)</label><select id="wkndsel">${[0, 100, 150, 200, 250, 300, 400, 500].map(v => `<option value="${v}" ${v === pl.wkndExtra ? 'selected' : ''}>${v ? '+' + v + ' Sat & Sun, −' + Math.round(v * 2 / 5) + ' Mon–Fri' : 'Same every day'}</option>`).join('')}</select></div>
+      <div class="field"><label>Calorie schedule</label>
+        <button class="btn ghost big" data-m-open="sched" style="text-align:left">${pl.sch.high.length
+          ? `High: ${esc(pl.sch.high.join(', '))} · +${fmt(pl.sch.extra)} (${fmt(pl.base - pl.sch.extra * pl.sch.high.length / 7)} low / ${fmt(pl.base - pl.sch.extra * pl.sch.high.length / 7 + pl.sch.extra)} high)`
+          : 'Same every day · tap to set high days'}</button></div>
     </section>`;
   }
   // ---------- progress ----------
@@ -515,7 +529,7 @@
       o.addEventListener('click', e => { if (e.target === o) closeModal(); }); }
     const m = state.modal;
     const body = m.type === 'add' ? addSheet(m) : m.type === 'food' ? foodSheet(m) : m.type === 'entry' ? entrySheet(m)
-      : m.type === 'quick' ? quickSheet(m) : m.type === 'ex' ? exSheet(m) : m.type === 'meal' ? mealSheet(m) : m.type === 'tell' ? tellSheet(m) : m.type === 'scan' ? scanSheet(m) : '';
+      : m.type === 'quick' ? quickSheet(m) : m.type === 'ex' ? exSheet(m) : m.type === 'meal' ? mealSheet(m) : m.type === 'tell' ? tellSheet(m) : m.type === 'scan' ? scanSheet(m) : m.type === 'sched' ? schedSheet(m) : '';
     const keepSearch = $('#q') && document.activeElement === $('#q');
     const pos = keepSearch ? $('#q').selectionStart : null;
     o.innerHTML = `<div class="sheet">${body}</div>`;
@@ -702,6 +716,24 @@
       <button class="btn big" data-m="tellsave">Send</button></div>`;
   }
 
+  // ---------- calorie schedule flow ----------
+  function schedSheet(m) {
+    const pl = planFor(today()), sel = m.high || [], x = m.extra ?? 150, H = sel.length;
+    const ok = H > 0 && H < 7, low = pl.base - x * H / 7;
+    return head('Calorie schedule') + `<div class="sheet-body">
+      <div class="sub" style="text-align:left;margin:0 0 6px">High days (eat more)</div>
+      <div class="dow">${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => `<button class="${sel.includes(d) ? 'on' : ''}" data-dow="${d}">${d}</button>`).join('')}</div>
+      <div class="sub" style="text-align:left;margin:14px 0 6px">How much more on high days</div>
+      <div class="dow" style="grid-template-columns:repeat(4,1fr)">${[150, 300, 500].map(v => `<button class="${x === v ? 'on' : ''}" data-xtra="${v}">+${v}</button>`).join('')}<input id="xtra" type="number" inputmode="numeric" placeholder="other" value="${[150, 300, 500].includes(x) ? '' : x}" class="xtra-in"></div>
+      <div class="big-cal" style="font-size:1.4rem;margin-top:14px">${ok ? `${fmt(low)} low · ${fmt(low + x)} high` : 'Same every day'}</div>
+      <div class="sub">Weekly total stays ${fmt(pl.base * 7)}</div>
+      <button class="btn big" data-m="schedsave">${ok ? 'Save schedule' : 'Save (no schedule)'}</button></div>`;
+  }
+  function saveSchedule(high, extra) {
+    savePlan({ 'High days': high.join(','), 'High day extra (cal)': extra, 'Weekend adjustment (cal)': 0, 'Weekday adjustment (cal)': 0 });
+    closeModal(); render();
+  }
+
   // ---------- barcode ----------
   function scanSheet(m) {
     return head('Scan a barcode', true) + `<div class="sheet-body">
@@ -800,6 +832,7 @@
     document.querySelectorAll('[data-poff]').forEach(b => b.onclick = () => { state.progOff = Math.min(0, (state.progOff || 0) + Number(b.dataset.poff)); render(); });
     const fg = $('#fgoal'); if (fg) fg.onchange = () => savePlan({ 'Fat mass goal (lb)': fg.value === '' ? '' : Number(fg.value) });
     const fd = $('#fdate'); if (fd) fd.onchange = () => savePlan({ 'Goal date': fd.value });
+    document.querySelectorAll('[data-m-open=sched]').forEach(b => b.onclick = () => { const sc = schedule(profile()); openModal({ type: 'sched', high: [...sc.high], extra: sc.extra || 150 }); });
     const ms = $('#mansel'); if (ms) ms.onchange = () => savePlan({ 'Manual adjustment (cal)': Number(ms.value) });
     const wk = $('#wkndsel'); if (wk) wk.onchange = () => { const v = Number(wk.value); savePlan({ 'Weekend adjustment (cal)': v, 'Weekday adjustment (cal)': -Math.round(v * 2 / 5) }); };
     document.querySelectorAll('[data-ate]').forEach(b => b.onclick = ev => {
@@ -852,6 +885,9 @@
   function bindModal() {
     const m = state.modal; if (!m) return;
     document.querySelectorAll('[data-m]').forEach(b => b.onclick = () => modalAct(b.dataset.m));
+    document.querySelectorAll('[data-dow]').forEach(b => b.onclick = () => { const d = b.dataset.dow; m.high = m.high || []; m.high = m.high.includes(d) ? m.high.filter(x => x !== d) : [...m.high, d]; renderModal(); });
+    document.querySelectorAll('[data-xtra]').forEach(b => b.onclick = () => { m.extra = Number(b.dataset.xtra); renderModal(); });
+    const xi = $('#xtra'); if (xi) xi.onchange = () => { if (Number(xi.value) > 0) { m.extra = Number(xi.value); renderModal(); } };
     document.querySelectorAll('[data-mslot]').forEach(b => b.onclick = () => { m.slot = b.dataset.mslot; renderModal(); });
     document.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { m.tab = b.dataset.tab; renderModal(); });
     const q = $('#q'); if (q) q.oninput = () => { m.q = q.value; renderModal(); };
@@ -958,6 +994,7 @@
       enqueue('append', { tab: 'Servings', headers: ['FoodID', 'Unit', 'Grams', 'Note', 'EntryID'], rows: [{ FoodID: f.id, Unit: 'Serving', Grams: g, Note: 'Set in app', EntryID: sv.id }] });
       renderModal(); return toast(`Serving saved: ${g} g`);
     }
+    if (a === 'schedsave') { const H = (m.high || []).length; return H > 0 && H < 7 ? saveSchedule(m.high, m.extra ?? 150) : saveSchedule([], 0); }
     if (a === 'tellsave') {
       const msg = ($('#tellmsg').value || '').trim(); if (!msg) return toast('Type or dictate a message');
       enqueue('append', { tab: 'Feedback', headers: ['Date', 'Time', 'Person', 'For', 'Message', 'Status', 'EntryID'],
