@@ -530,8 +530,30 @@
       <div class="sub" style="margin:10px 0 0">XP: 10 per day logged, +10 for done, +15 for done under budget, +25 per week of streak</div></section>
       <section class="card"><h2>Meal sections</h2>${ALL_SLOTS.map(s => `<div class="toggle-row"><span>${s}</span><button class="switch ${vs.includes(s) ? 'on' : ''}" data-slot="${s}"></button></div>`).join('')}</section>
       <section class="card"><h2>Extras</h2><div class="toggle-row"><span>Track water</span><button class="switch ${waterOn() ? 'on' : ''}" data-act="water"></button></div></section>
-      <section class="card"><div class="sub" style="margin:0 0 6px">${state.queue.length ? `${state.queue.length} change${state.queue.length === 1 ? '' : 's'} waiting to save (next: ${esc(state.queue[0].action)}${state.queue[0].tries ? `, tried ${state.queue[0].tries}×` : ''})` : 'All changes saved'}${state.error ? ` · last error: ${esc(state.error)}` : ''}${load('failed', []).length ? ` · ${load('failed', []).length} set aside` : ''}</div><div class="sub" style="margin:0">App version ${esc(load('version', '?'))} · Data: Food_Log sheet · ${state.data.foods.length.toLocaleString()} foods · last sync ${esc(new Date(state.data.serverTime || Date.now()).toLocaleString())}</div></section>`;
+      <section class="card"><div class="sub" style="margin:0 0 6px">${state.queue.length ? `${state.queue.length} change${state.queue.length === 1 ? '' : 's'} waiting to save (next: ${esc(state.queue[0].action)}${state.queue[0].tries ? `, tried ${state.queue[0].tries}×` : ''})` : 'All changes saved'}${state.error ? ` · last error: ${esc(state.error)}` : ''}${load('failed', []).length ? ` · ${load('failed', []).length} set aside` : ''}</div><div class="sub" style="margin:0">App version ${esc(load('version', '?'))} · Data: Food_Log sheet · ${state.data.foods.length.toLocaleString()} foods · last sync ${esc(new Date(state.data.serverTime || Date.now()).toLocaleString())}</div><button class="news-line" data-act="news">What's new${newsUnread() ? '<i class="news-dot" aria-label="unread"></i>' : ''}<span>›</span></button></section>`;
   }
+
+  // ---------- what's new ----------
+  // newest version in changelog.json; known after the sheet is opened, or from version.json (bumped in the same commit)
+  const newsUnread = () => { const v = load('latestNews', null) || load('version', null); return !!v && load('newsSeen', null) !== v; };
+  async function openNews() {
+    openModal({ type: 'news', entries: null, err: '' });
+    const m = state.modal;
+    try {
+      const j = await (await fetch('../changelog.json?t=' + Date.now(), { cache: 'no-store' })).json();
+      m.entries = (j && j.entries) || [];
+      if (m.entries[0]) { save('latestNews', m.entries[0].version); save('newsSeen', m.entries[0].version); }
+    } catch (e) { m.err = 'Could not load the change log: ' + e.message; }
+    if (state.modal === m) renderModal();
+  }
+  function newsSheet(m) {
+    const body = m.err ? `<div class="empty">${esc(m.err)}</div>`
+      : !m.entries ? '<div class="empty">Loading…</div>'
+      : !m.entries.length ? '<div class="empty">Nothing yet.</div>'
+      : m.entries.map(e => `<div class="news-entry"><h4>${esc(fmtNewsDate(e.date))}</h4><ul>${(e.items || []).map(i => `<li>${esc(i)}</li>`).join('')}</ul></div>`).join('');
+    return head("What's new") + `<div class="sheet-body">${body}</div>`;
+  }
+  const fmtNewsDate = d => { try { return parse(d).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }); } catch (e) { return d; } };
 
   // ---------- modals ----------
   function openModal(m) { state.modal = m; renderModal(); }
@@ -542,7 +564,7 @@
       o.addEventListener('click', e => { if (e.target === o) closeModal(); }); }
     const m = state.modal;
     const body = m.type === 'add' ? addSheet(m) : m.type === 'food' ? foodSheet(m) : m.type === 'entry' ? entrySheet(m)
-      : m.type === 'quick' ? quickSheet(m) : m.type === 'ex' ? exSheet(m) : m.type === 'meal' ? mealSheet(m) : m.type === 'tell' ? tellSheet(m) : m.type === 'scan' ? scanSheet(m) : m.type === 'sched' ? schedSheet(m) : m.type === 'savemeal' ? saveMealSheet(m) : m.type === 'copy' ? copySheet(m) : '';
+      : m.type === 'quick' ? quickSheet(m) : m.type === 'ex' ? exSheet(m) : m.type === 'meal' ? mealSheet(m) : m.type === 'tell' ? tellSheet(m) : m.type === 'scan' ? scanSheet(m) : m.type === 'sched' ? schedSheet(m) : m.type === 'savemeal' ? saveMealSheet(m) : m.type === 'copy' ? copySheet(m) : m.type === 'news' ? newsSheet(m) : '';
     const keepSearch = $('#q') && document.activeElement === $('#q');
     const pos = keepSearch ? $('#q').selectionStart : null;
     o.innerHTML = `<div class="sheet">${body}</div>`;
@@ -918,6 +940,7 @@
     else if (a === 'add') return openModal({ type: 'add', slot: defaultSlot(), tab: 'foods' });
     else if (a === 'addex') return openModal({ type: 'ex' });
     else if (a === 'copyday') return openModal({ type: 'copy' });
+    else if (a === 'news') return openNews();
     else if (a === 'refresh') { toast('Syncing…'); return refresh(); }
     else if (a === 'done') {
       setDayFlag({ done: true });
@@ -1118,7 +1141,9 @@
         // reload with a fresh URL so the page itself can't come from cache
         const u = new URL(location.href); u.searchParams.set('r', Date.now()); location.replace(u.toString()); return true;
       }
+      const changed = v.version !== seen;
       save('version', v.version);
+      if (changed && state.view === 'settings' && !state.modal && state.data) render();
     } catch (e) {}
     return false;
   }

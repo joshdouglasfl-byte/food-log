@@ -25,3 +25,13 @@ Done: phases 1-2, plan view (Mifflin-St Jeor x1.2 + manual adjustment + weekly g
 - Barcode scan confirmed working on Josh's phone 2026-11-20.
 - Michelle's dietitian: drafted 2026-11-21 as `michelle-dietitian` (lives in her Claude) on top of the shared `food-log-sheet` skill, which now holds the sheet layout, budget math and writing rules (loseit-dietitian references it instead of repeating them). Josh's dietitian logs Michelle's Workout Buddy calories into Exercise (Person Michelle, no Lose It! mirror). Waiting on Michelle to upload the skills and add her nightly task.
 - Michelle's Cal AI history import: not started.
+
+## Done 2026-11-21
+- Change log: `changelog.json` + "What's new" line in the About card (Plan tab), fetched only when opened; dot until read (`newsSeen`/`latestNews` in localStorage). Every push adds an entry in the same commit as the version.json bump.
+- Fix: About redraws after the first version check, so a fresh install no longer shows "App version ?".
+- Note: `checkVersion()` and the `visibilitychange` reload were always working; an earlier "bug" came from a web fetch truncating app.js.
+- Tested in headless Chrome (Playwright, /usr/bin/google-chrome) at 390x844 and 820x1180.
+
+## Exercise work (decided 2026-11-21, not built)
+- Regular exercises: new `Exercises` tab (library with cal/min per activity), picker like food, fill the blank of minutes/calories from the rate, labeled as an estimate. Don't change durations Josh enters.
+- Planned exercise: Planned column on Exercise; planned burn COUNTS toward Left like planned food (Days formula unchanged). bootstrap_ needs a Planned flag -> Apps Script redeploy.

@@ -204,3 +204,12 @@ input, textarea, select { -webkit-user-select: text; user-select: text; }
 .meal-item .tick { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--green); color: #fff; background: var(--green); display: grid; place-items: center; font-size: .85rem; flex: none; }
 .meal-item.off .tick { background: none; }
 .meal-item.off .nm, .meal-item.off .cal { opacity: .4; text-decoration: line-through; }
+/* What's new */
+.news-line { display: flex; align-items: center; gap: 6px; width: 100%; margin-top: 10px; padding: 10px 0 0; border-top: 1px solid var(--line); color: var(--green); font-weight: 600; font-size: .95rem; text-align: left; }
+.news-line span { margin-left: auto; color: var(--muted); font-size: 1.1rem; }
+.news-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--green-2); display: inline-block; }
+.news-entry { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.news-entry:last-child { border-bottom: 0; }
+.news-entry h4 { margin: 0 0 6px; font-size: .95rem; }
+.news-entry ul { margin: 0; padding-left: 20px; }
+.news-entry li { margin: 4px 0; line-height: 1.35; }

@@ -1,0 +1,19 @@
+{"entries": [
+  {"date": "2026-11-21", "version": "20261121111034", "items": [
+    "What's new: this list, opened from the bottom of the Plan tab, with a green dot when there's something you haven't read",
+    "App version now shows right away on a fresh install instead of \"?\""
+  ]},
+  {"date": "2026-11-20", "version": "20261120231155", "items": [
+    "First release: log food by meal, with a daily calorie budget and what's left",
+    "Planned vs eaten: plan food ahead with a clock, tap to confirm when you eat it, with undo",
+    "Saved meals you can add as separate items, and copy a whole day",
+    "Barcode scanning, saved servings and one-tap serving counts",
+    "Unit handling: weight and volume dropdowns, fractions, grams for unit foods",
+    "Plan tab calorie schedule: pick high days and how much more, weekly total unchanged",
+    "Progress chart of weight and fat mass with your goal, pace and date",
+    "Week view with a projection for the rest of the week",
+    "Levels, XP, streaks and badges",
+    "Tell my developer and Tell my dietitian buttons",
+    "Changes save offline and sync later; the app always loads the latest version"
+  ]}
+]}
