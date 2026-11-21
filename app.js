@@ -718,9 +718,9 @@
   }
   const head = (title, back) => `<div class="sheet-head">${back ? '<button class="icon-btn" data-m="back">‹</button>' : ''}<h3>${esc(title)}</h3><button class="icon-btn" data-m="close">✕</button></div>`;
 
+  // The meal comes from the "+ Add food" button that was tapped, so the sheet just names it
+  const addTitle = m => `Add to ${m.slot || defaultSlot()}${state.date === today() ? '' : ' · ' + dayLabel(state.date)}`;
   function addSheet(m) {
-    const slots = visibleSlots();
-    const pick = `<div class="meal-pick">${slots.map(s => `<button class="${s === m.slot ? 'on' : ''}" data-mslot="${s}">${s}</button>`).join('')}</div>`;
     const seg = `<div class="seg">${[['foods', 'My foods'], ['meals', 'Meals'], ['quick', 'Quick entry']].map(([k, t]) => `<button class="${m.tab === k ? 'on' : ''}" data-tab="${k}">${t}</button>`).join('')}</div>`;
     let list = '';
     if (m.tab === 'foods') {
@@ -745,9 +745,9 @@
         || '<div class="empty">No past meals yet.</div>';
       m._meals = meals; m._saved = saved;
     } else {
-      return head('Add to ' + dayLabel(state.date)) + `<div class="sheet-body">${pick}${seg}${quickForm(m)}</div>`;
+      return head(addTitle(m)) + `<div class="sheet-body">${seg}${quickForm(m)}</div>`;
     }
-    return head('Add to ' + dayLabel(state.date)) + `<div class="sheet-body">${pick}${seg}${list}</div>`;
+    return head(addTitle(m)) + `<div class="sheet-body">${seg}${list}</div>`;
   }
   // ---------- USDA FoodData Central type-ahead (via the sheet script's foodSearch, which holds the key) ----------
   const titleCase = t => t === t.toUpperCase() ? t.toLowerCase().replace(/\b([a-z])/g, c => c.toUpperCase()) : t;
