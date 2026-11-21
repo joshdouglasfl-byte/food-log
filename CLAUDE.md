@@ -15,8 +15,8 @@ Done: phases 1-2, plan view (Mifflin-St Jeor x1.2 + manual adjustment + weekly g
 - loseit-dietitian skill reworked: Food_Log sheet primary, "Mirror to Lose It!: ON", Withings -> Body for both, Workout Buddy calories -> Exercise (EntryID WB-<Row ID>), Nightly plan refresh steps moved into the skill.
 - Scheduled tasks: "Dietitian plan refresh" (was Lose It! plan refresh) and "Workout Buddy calories (sheet + Lose It!)" now just point at the skill. workout-trainer and the morning brief already delegate to the dietitian skill, so no change.
 
-## At cutover (when Josh says drop Lose It!)
-- Remove the mirror line and Lose It! sections from loseit-dietitian (consider renaming it), drop Lose It! from site-login-check and the morning brief's sign-in line, rename the hourly task.
+## Cutover done (2026-11-21)
+- Josh switched fully to Food Log. loseit-dietitian rewritten with no Lose It! steps (slug kept so tasks still find it; Withings stays in Chrome). site-login-check checks Withings only; morning brief reads the Body tab. Scheduled tasks: "Workout Buddy calories (Food Log)" (renamed, sheet only), "Dietitian plan refresh" and "Workout Buddy trainer (nightly)" prompts no longer mention Lose It!. Planned exercise Source is now "Plan" (older rows "Lose It! plan", treated the same).
 
 ## Done 2026-11-20 late (2)
 - Saved meals (Meals tab, items JSON; added as separate tickable Log rows), Copy a day (planned if future, exercise Source 'Copied'), Foods N:O formulas pasted as values. Code.gs addFood_ now writes 0/blank for Times used/Last used (redeploy 2026-11-20).
@@ -44,7 +44,7 @@ Done: phases 1-2, plan view (Mifflin-St Jeor x1.2 + manual adjustment + weekly g
 ## Apple Watch workouts (2026-11-21; needs one redeploy)
 - iPhone Shortcuts can't read Health workouts (no Workouts type in Find Health Samples on Josh's iOS), so the shortcut plan was dropped. Health Auto Export (paid iPhone app, REST API automation, Workouts, JSON) posts to the script URL with `?source=hae&person=<Josh|Michelle>&key=<API_KEY>` (Apps Script can't read headers). doPost routes that to `haeWorkouts_`, which maps the watch name via `HAE_ACTIVITY` (unlisted names kept as-is), takes activeEnergyBurned (or activeEnergy; kJ converted) and calls `addExercise_` with Source `Apple Watch`, EntryID `AW-<start yyyyMMddHHmm>`; repeats are skipped, so a look-back window is safe.
 - Settings > Apple Watch card: last Apple Watch row received + "Copy Health Auto Export URL" (each person's own link).
-- Workout Buddy setting `Watch Calories` = `Shortcut` (per person) stops its keypad once that person's watch workouts arrive; loseit-dietitian mirrors Josh's Apple Watch rows to Lose It!, drops planned rows they replace, and flags sessions that never arrived.
+- Workout Buddy setting `Watch Calories` = `Shortcut` (per person) stops its keypad once that person's watch workouts arrive; loseit-dietitian drops planned rows Apple Watch rows replace, and flags sessions that never arrived.
 
 ## Feedback batch 2026-11-21 afternoon (no redeploy)
 - Swipe left on a log entry reveals Delete (bindSwipe/swipeDelete; Undo re-adds via addLog). Food list: restaurant tag + "last <day>" (from the 365-day log). defaultAmount(): restaurant food with a Servings 'Serving' row opens at 1 serving. Day view shows "Saved as <meal>" when a slot's foods match a saved meal. foodSheet's first calorie figure now converts units (toFoodUnits).
