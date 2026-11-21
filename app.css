@@ -198,3 +198,9 @@ input, textarea, select { -webkit-user-select: text; user-select: text; }
 .svq { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
 .svq span { color: var(--muted); font-size: .85rem; font-weight: 600; min-width: 64px; }
 .svq .btn { flex: 1; padding: 9px 0; }
+.meal-actions { display: flex; justify-content: space-between; align-items: center; }
+.meal-actions .add-line { width: auto; }
+.link-btn { color: var(--muted); font-size: .85rem; font-weight: 600; padding: 8px 0 2px; }
+.meal-item .tick { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--green); color: #fff; background: var(--green); display: grid; place-items: center; font-size: .85rem; flex: none; }
+.meal-item.off .tick { background: none; }
+.meal-item.off .nm, .meal-item.off .cal { opacity: .4; text-decoration: line-through; }

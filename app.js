@@ -236,6 +236,10 @@
     }
     return { score, lastQty };
   }
+  function savedMeals() {
+    return (state.data.meals || []).map(m => { let items = []; try { items = JSON.parse(m.items || '[]'); } catch (e) {} return { ...m, items }; })
+      .filter(m => Array.isArray(m.items) && m.items.length);
+  }
   function pastMeals(slot, date) {
     const t = today(), wk = isWeekend(date), groups = new Map();
     for (const l of state.data.log) {
@@ -342,7 +346,7 @@
           <div class="nm"><div>${isPlanned(l) ? '🕒 ' : ''}${esc(l.name)}${l.est ? '<span class="est">EST</span>' : ''}</div><small>${esc(qtyText(l))}${isPlanned(l) ? ' · planned' : ''}</small></div><div class="cal">${fmt(l.cal)}</div>
           ${isPlanned(l) && state.date <= today() ? `<button class="ate-btn" data-ate="${esc(entryKey(l))}" aria-label="Ate it">✓</button>` : ''}</div>`).join('')}
         ${state.date <= today() && items.filter(isPlanned).length > 1 ? `<button class="add-line" data-confirm="${slot}">✓ Ate all ${items.filter(isPlanned).length} planned items</button>` : ''}
-        <button class="add-line" data-addslot="${slot}">+ Add food</button></section>`;
+        <div class="meal-actions"><button class="add-line" data-addslot="${slot}">+ Add food</button>${items.length > 1 ? `<button class="link-btn" data-savemeal="${slot}">⭐ Save as meal</button>` : ''}</div></section>`;
     }
     // hidden-slot entries (e.g. old Early Snacks) still show so totals make sense
     const hidden = x.log.filter(l => !visibleSlots().includes(l.meal));
@@ -355,6 +359,7 @@
     h += x.done
       ? `<button class="btn big ghost" data-act="undone">✓ Done for the day · tap to reopen</button>`
       : `<button class="btn big done" data-act="done">I'm done logging today</button>`;
+    if (x.log.length) h += `<div class="tell"><button data-act="copyday">📋 Copy this day</button></div>`;
     h += `<div class="tell"><button data-tell="Dietitian">💬 Tell my dietitian</button><button data-tell="Developer">🛠 Tell my developer</button></div>`;
     return h;
   }
@@ -537,7 +542,7 @@
       o.addEventListener('click', e => { if (e.target === o) closeModal(); }); }
     const m = state.modal;
     const body = m.type === 'add' ? addSheet(m) : m.type === 'food' ? foodSheet(m) : m.type === 'entry' ? entrySheet(m)
-      : m.type === 'quick' ? quickSheet(m) : m.type === 'ex' ? exSheet(m) : m.type === 'meal' ? mealSheet(m) : m.type === 'tell' ? tellSheet(m) : m.type === 'scan' ? scanSheet(m) : m.type === 'sched' ? schedSheet(m) : '';
+      : m.type === 'quick' ? quickSheet(m) : m.type === 'ex' ? exSheet(m) : m.type === 'meal' ? mealSheet(m) : m.type === 'tell' ? tellSheet(m) : m.type === 'scan' ? scanSheet(m) : m.type === 'sched' ? schedSheet(m) : m.type === 'savemeal' ? saveMealSheet(m) : m.type === 'copy' ? copySheet(m) : '';
     const keepSearch = $('#q') && document.activeElement === $('#q');
     const pos = keepSearch ? $('#q').selectionStart : null;
     o.innerHTML = `<div class="sheet">${body}</div>`;
@@ -565,11 +570,12 @@
           <small>${esc(f.brand ? f.brand + ' · ' : '')}${+Number(qty).toFixed(2)} ${esc(f.unit)}</small></div><div class="cal">${fmt(f.cal / f.per * qty)}</div></button>`; }).join('')
         || `<div class="empty">No match. Try Quick entry and Claude will look it up.</div>`}`;
     } else if (m.tab === 'meals') {
-      const meals = pastMeals(m.slot, state.date);
-      list = meals.map((g, i) => `<button class="pick" data-meal="${i}"><div class="nm"><div>${esc(g.items.map(x => x.name).join(', '))}</div>
+      const meals = pastMeals(m.slot, state.date), saved = savedMeals();
+      list = (saved.length ? `<div class="sub" style="text-align:left;margin:4px 0">Saved meals</div>` + saved.map((g, i) => `<button class="pick" data-smeal="${i}"><div class="nm"><div>⭐ ${esc(g.name)}</div>
+        <small>${g.items.length} items · ${esc(g.items.map(x => x.name).join(', '))}</small></div><div class="cal">${fmt(g.items.reduce((a, x) => a + (x.cal || 0), 0))}</div></button>`).join('') + `<div class="sub" style="text-align:left;margin:12px 0 4px">Recent meals</div>` : '') + meals.map((g, i) => `<button class="pick" data-meal="${i}"><div class="nm"><div>${esc(g.items.map(x => x.name).join(', '))}</div>
         <small>${esc(g.meal)} · ${esc(dayLabel(g.date))}${g.count > 1 ? ` · had ${g.count}×` : ''}</small></div><div class="cal">${fmt(g.items.reduce((a, x) => a + x.cal, 0))}</div></button>`).join('')
         || '<div class="empty">No past meals yet.</div>';
-      m._meals = meals;
+      m._meals = meals; m._saved = saved;
     } else {
       return head('Add to ' + dayLabel(state.date)) + `<div class="sheet-body">${pick}${seg}${quickForm(m)}</div>`;
     }
@@ -715,11 +721,33 @@
       <button class="btn big" data-m="exsave">Add</button></div>`;
   }
   function mealSheet(m) {
-    const g = m.group;
-    return head('Add meal', true) + `<div class="sheet-body">
-      ${g.items.map(x => `<div class="entry"><div class="nm"><div>${esc(x.name)}</div><small>${esc(qtyText(x))}</small></div><div class="cal">${fmt(x.cal)}</div></div>`).join('')}
-      <div class="big-cal">${fmt(g.items.reduce((a, x) => a + x.cal, 0))}</div><div class="sub">to ${esc(m.slot)} · ${esc(dayLabel(state.date))}</div>
-      <button class="btn big" data-m="mealsave">Add all</button></div>`;
+    const g = m.group, off = m.off || [];
+    const items = g.items.map((x, i) => `<div class="entry meal-item ${off.includes(i) ? 'off' : ''}" role="button" data-mitem="${i}">
+      <span class="tick">${off.includes(i) ? '' : '✓'}</span><div class="nm"><div>${esc(x.name)}</div><small>${esc(qtyText(x))}</small></div><div class="cal">${fmt(x.cal)}</div></div>`).join('');
+    const tot = g.items.reduce((a, x, i) => a + (off.includes(i) ? 0 : (x.cal || 0)), 0), n = g.items.length - off.length;
+    return head(g.name ? `⭐ ${g.name}` : 'Add meal', true) + `<div class="sheet-body">
+      <div class="sub" style="text-align:left;margin:0 0 4px">Tap an item to leave it out. Each one is added separately, so you can still edit it later.</div>
+      ${items}
+      <div class="big-cal">${fmt(tot)}</div><div class="sub">to ${esc(m.slot)} · ${esc(dayLabel(state.date))}</div>
+      <button class="btn big" data-m="mealsave" ${n ? '' : 'disabled'}>Add ${n} item${n === 1 ? '' : 's'}</button>
+      ${g.id ? '<button class="danger" data-m="mealdel">Delete saved meal</button>' : ''}</div>`;
+  }
+  function saveMealSheet(m) {
+    return head('Save as a meal') + `<div class="sheet-body">
+      ${m.items.map(x => `<div class="entry"><div class="nm"><div>${esc(x.name)}</div><small>${esc(qtyText(x))}</small></div><div class="cal">${fmt(x.cal)}</div></div>`).join('')}
+      <div class="field" style="margin-top:12px"><label>Meal name</label><input id="mname" value="${esc(m.name || '')}" placeholder="e.g. Oatmeal dinner"></div>
+      <button class="btn big" data-m="mealsavenew">Save meal</button></div>`;
+  }
+  function copySheet(m) {
+    const x = dayTotals(state.date), slots = ALL_SLOTS.filter(sl => x.log.some(l => l.meal === sl));
+    const pick = m.slots || slots;
+    return head('Copy ' + dayLabel(state.date)) + `<div class="sheet-body">
+      <div class="field"><label>Copy to</label><input id="cdate" type="date" value="${esc(m.to || addDays(state.date, 1))}"></div>
+      <div class="sub" style="text-align:left;margin:4px 0">Meals to copy</div>
+      ${slots.map(sl => { const its = x.log.filter(l => l.meal === sl); return `<div class="entry meal-item ${pick.includes(sl) ? '' : 'off'}" role="button" data-cslot="${sl}"><span class="tick">${pick.includes(sl) ? '✓' : ''}</span><div class="nm"><div>${sl}</div><small>${its.length} item${its.length === 1 ? '' : 's'}</small></div><div class="cal">${fmt(its.reduce((a, l) => a + l.cal, 0))}</div></div>`; }).join('') || '<div class="empty">Nothing logged on this day.</div>'}
+      ${x.ex.length ? `<div class="entry meal-item ${m.noEx ? 'off' : ''}" role="button" data-cex="1"><span class="tick">${m.noEx ? '' : '✓'}</span><div class="nm"><div>Exercise</div><small>${x.ex.length} entr${x.ex.length === 1 ? 'y' : 'ies'}</small></div><div class="cal">${fmt(x.burned)}</div></div>` : ''}
+      <button class="btn big" data-m="copygo" style="margin-top:12px">Copy</button>
+      <div class="sub" style="margin-top:8px">Copies to a future day are marked planned.</div></div>`;
   }
 
   function tellSheet(m) {
@@ -801,14 +829,15 @@
   }
 
   // ---------- actions ----------
-  function addEntries(entries) {
-    entries.forEach(e => { e.id = uid('L'); e.date = state.date; e.time = state.date === today() ? nowHM() : ''; state.data.log.push(e); });
-    ensureLocalDay(state.date);
+  function addEntries(entries, date = state.date, quiet) {
+    entries.forEach(e => { e.id = uid('L'); e.date = date; e.time = date === today() ? nowHM() : ''; delete e.planned; state.data.log.push(e); });
+    ensureLocalDay(date);
     persist();
-    enqueue('addLog', { entries: entries.map(e => ({ ...e })), budget: budgetFor(state.date) });
-    if (state.date > today()) entries.forEach(e => markPlanned(e, true));
+    enqueue('addLog', { entries: entries.map(e => ({ ...e })), budget: budgetFor(date) });
+    if (date > today()) entries.forEach(e => markPlanned(e, true));
     render();
-    const x = dayTotals(state.date);
+    if (quiet) return;
+    const x = dayTotals(date);
     toast(`Added · ${fmt(Math.abs(x.left))} ${x.left < 0 ? 'over' : 'left'}`);
   }
   function ensureLocalDay(date) {
@@ -860,6 +889,10 @@
       toast(`${es.length} item${es.length === 1 ? '' : 's'} confirmed`, 'Undo', () => { es.forEach(l => markPlanned(l, true)); render(); });
     });
     document.querySelectorAll('[data-tell]').forEach(b => b.onclick = () => openModal({ type: 'tell', to: b.dataset.tell }));
+    document.querySelectorAll('[data-savemeal]').forEach(b => b.onclick = () => {
+      const sl = b.dataset.savemeal, its = (I().logByDate.get(state.date) || []).filter(l => l.meal === sl);
+      openModal({ type: 'savemeal', slot: sl, items: its, name: '' });
+    });
     document.querySelectorAll('[data-goto]').forEach(b => b.onclick = () => { state.date = b.dataset.goto; state.view = 'day'; render(); });
     document.querySelectorAll('[data-slot]').forEach(b => b.onclick = () => {
       const s = b.dataset.slot, cur = visibleSlots();
@@ -884,6 +917,7 @@
     else if (a === 'wnext') state.weekOf = addDays(state.weekOf, 7);
     else if (a === 'add') return openModal({ type: 'add', slot: defaultSlot(), tab: 'foods' });
     else if (a === 'addex') return openModal({ type: 'ex' });
+    else if (a === 'copyday') return openModal({ type: 'copy' });
     else if (a === 'refresh') { toast('Syncing…'); return refresh(); }
     else if (a === 'done') {
       setDayFlag({ done: true });
@@ -912,6 +946,17 @@
       state.modal = { type: 'food', food: f.id, qty: lq ? +Number(lq.qty).toFixed(2) : f.per, unit: lq ? (servingOf(f, lq.unit) ? servingOf(f, lq.unit).unit : canonUnit(lq.unit)) : (servingsFor(f)[0] ? servingsFor(f)[0].unit : canonUnit(f.unit)), slot: m.slot, back: m }; if (!lq && servingsFor(f)[0]) state.modal.qty = 1; renderModal();
       setTimeout(() => { const i = $('#fqty'); if (i) { i.focus(); i.select(); } }, 50);
     });
+    document.querySelectorAll('[data-smeal]').forEach(b => b.onclick = () => {
+      state.modal = { type: 'meal', group: m._saved[Number(b.dataset.smeal)], slot: m.slot, back: m }; renderModal();
+    });
+    document.querySelectorAll('[data-mitem]').forEach(b => b.onclick = () => {
+      const i = Number(b.dataset.mitem); m.off = m.off || []; m.off = m.off.includes(i) ? m.off.filter(x => x !== i) : [...m.off, i]; renderModal();
+    });
+    document.querySelectorAll('[data-cslot]').forEach(b => b.onclick = () => {
+      const x = dayTotals(state.date), all = ALL_SLOTS.filter(sl => x.log.some(l => l.meal === sl)); m.slots = m.slots || all; m.to = $('#cdate').value;
+      const sl = b.dataset.cslot; m.slots = m.slots.includes(sl) ? m.slots.filter(y => y !== sl) : [...m.slots, sl]; renderModal();
+    });
+    document.querySelectorAll('[data-cex]').forEach(b => b.onclick = () => { m.to = $('#cdate').value; m.noEx = !m.noEx; renderModal(); });
     document.querySelectorAll('[data-meal]').forEach(b => b.onclick = () => {
       state.modal = { type: 'meal', group: m._meals[Number(b.dataset.meal)], slot: m.slot, back: m }; renderModal();
     });
@@ -974,11 +1019,33 @@
       closeModal(); return addEntries([entryFromFood(f, qty, m.slot, $('#funit') ? $('#funit').value : f.unit)]);
     }
     if (a === 'mealsave') {
-      const es = m.group.items.map(x => {
+      const off = m.off || [];
+      const es = m.group.items.filter((x, i) => !off.includes(i)).map(x => {
         const f = x.food && I().foodById.get(x.food);
-        return f ? entryFromFood(f, x.qty, m.slot) : { food: '', meal: m.slot, name: x.name, qty: x.qty, unit: x.unit, cal: x.cal, pro: x.pro, fib: x.fib, carb: x.carb, fat: x.fat, est: x.est };
+        return f ? entryFromFood(f, x.qty, m.slot, x.unit) : { food: '', meal: m.slot, name: x.name, qty: x.qty, unit: x.unit, cal: x.cal, pro: x.pro ?? null, fib: x.fib ?? null, carb: x.carb ?? null, fat: x.fat ?? null, est: !!x.est };
       });
       closeModal(); return addEntries(es);
+    }
+    if (a === 'mealsavenew') {
+      const name = ($('#mname').value || '').trim(); if (!name) return toast('Give the meal a name');
+      const items = m.items.map(l => ({ food: l.food, name: l.name, qty: l.qty, unit: l.unit, cal: l.cal, pro: l.pro, fib: l.fib, carb: l.carb, fat: l.fat, est: l.est }));
+      const cal = Math.round(items.reduce((a, x) => a + (x.cal || 0), 0)), id = 'M' + uid('').toUpperCase();
+      (state.data.meals = state.data.meals || []).push({ id, name, items: JSON.stringify(items), cal }); persist();
+      enqueue('append', { tab: 'Meals', rows: [{ MealID: id, 'Meal name': name, 'Items (FoodID x qty)': JSON.stringify(items), Calories: cal, Notes: 'Saved in app' }] });
+      closeModal(); return toast(`Saved "${name}" · find it under Meals`);
+    }
+    if (a === 'mealdel') {
+      const id = m.group.id; state.data.meals = (state.data.meals || []).filter(x => x.id !== id); persist();
+      enqueue('delete', { tab: 'Meals', id }); closeModal(); return toast('Saved meal deleted');
+    }
+    if (a === 'copygo') {
+      const to = $('#cdate').value; if (!to) return toast('Pick a date');
+      const x = dayTotals(state.date), all = ALL_SLOTS.filter(sl => x.log.some(l => l.meal === sl)), slots = m.slots || all;
+      const es = x.log.filter(l => slots.includes(l.meal)).map(l => ({ food: l.food, meal: l.meal, name: l.name, qty: l.qty, unit: l.unit, cal: l.cal, pro: l.pro, fib: l.fib, carb: l.carb, fat: l.fat, est: l.est }));
+      if (es.length) addEntries(es, to, true);
+      if (!m.noEx) x.ex.forEach(e => { const n = { id: uid('X'), date: to, name: e.name, min: e.min, cal: e.cal, source: 'Copied' }; state.data.exercise.push(n); enqueue('addExercise', { entry: n, budget: budgetFor(to) }); });
+      ensureLocalDay(to); persist(); closeModal(); render();
+      return toast(`Copied ${es.length} item${es.length === 1 ? '' : 's'} to ${dayLabel(to)}`, 'Go there', () => { state.date = to; render(); });
     }
     if (a === 'quicksave') {
       const name = ($('#qname').value || '').trim(); if (!name) return toast('Type what you ate');
