@@ -8,7 +8,7 @@ API = 'https://script.google.com/macros/s/AKfycbx1Z0lkyHaiQ8n0kCC9TMqATaGZDWtipp
 T = datetime.date.today()
 D = lambda n: (T + datetime.timedelta(days=n)).isoformat()
 MON = T - datetime.timedelta(days=T.weekday()); NEXT_MON = (MON + datetime.timedelta(days=7)).isoformat(); THIS_MON = MON.isoformat()
-EXTRA = {}
+EXTRA = {}; EXROWS = []
 
 def profile(person):
     p = {'Person': person, 'Birthday': '1975-06-01', 'Sex': 'Male' if person == 'Josh' else 'Female', 'Height (in)': 70 if person == 'Josh' else 64,
@@ -17,7 +17,7 @@ def profile(person):
     p.update(EXTRA); return p
 
 def boot(person):
-    return dict(ok=True, profile=profile(person), foods=[], meals=[], log=[], exercise=[],
+    return dict(ok=True, profile=profile(person), foods=[], meals=[], log=[], exercise=EXROWS,
                 days=[dict(date=D(0), budget=1, done=False, water=0), dict(date=NEXT_MON, budget=1, done=False, water=0)],
                 body=[dict(date=D(-i), weight=210 - i * 0.05, fatPct=25, fatLb=52) for i in range(10, 0, -1)], plan=[], serverTime=datetime.datetime.now().isoformat())
 
@@ -110,6 +110,12 @@ def run(pw, w, h, tag):
     page.click('[data-act=cancelnext]'); page.wait_for_timeout(300)
     check(prof(page)['Next plan'] == '' and page.locator('.plan-next').count() == 0, f'{tag}: Keep current plan clears the future plan')
     check(any('Next plan' in s for s in all_saved(page)), f'{tag}: Next plan sent through saveSettings')
+    # a background refresh must not redraw the page under an open picker (it closes the iPhone picker)
+    page.evaluate("window._gs = document.querySelector('#goalsel'); window._gs.focus()")
+    page.evaluate("document.dispatchEvent(new Event('visibilitychange'))"); page.wait_for_timeout(1200)
+    check(page.evaluate("window._gs.isConnected && document.activeElement === window._gs"), f'{tag}: open goal picker survives a background refresh')
+    page.evaluate("window._gs.blur()"); page.wait_for_timeout(300)
+    check(not page.evaluate("window._gs.isConnected"), f'{tag}: deferred redraw runs after the picker closes')
     check(not errs, f'{tag}: no page errors {errs[:2]}')
     br.close()
 
@@ -133,7 +139,28 @@ def run_promote(pw):
     check(not errs, f'michelle: no page errors {errs[:2]}')
     br.close()
 
+def run_exedit(pw):
+    # planned exercise: changing minutes recalculates calories (no library rate, so the entry's own cal/min)
+    EXTRA.clear(); CALLS.clear()
+    EXROWS[:] = [dict(date=D(3), name='Golf', min=240, cal=1000, source='Plan', id='XG1'), dict(date=D(-2), name='Bike ride', min=40, cal=380, source='Apple Watch', id='AW-1')]
+    br, page, errs = open_page(pw, 390, 844)
+    for _ in range(3): page.click('[data-act=next]'); page.wait_for_timeout(100)
+    page.click('[data-ex]'); page.wait_for_selector('#xmin')
+    page.fill('#xmin', '120'); page.wait_for_timeout(100)
+    check(page.input_value('#xcal') == '500', f'exedit: planned golf 240→120 min recalculates calories ({page.input_value("#xcal")})')
+    check('EST' in page.inner_text('#lxcal'), 'exedit: calories marked EST')
+    page.click('[data-m=exupd]'); page.wait_for_timeout(300)
+    up = [q['body'] for q in queued(page, 'update') if q['body'].get('id') == 'XG1'] + [c for c in CALLS if c.get('id') == 'XG1']
+    check(any(u['values'].get('Calories') == 500 and u['values'].get('Minutes') == 120 for u in up), f'exedit: saved 120 min / 500 cal')
+    # a measured (watch) workout keeps its calories when minutes change
+    page.click('[data-act=prev]'); [page.click('[data-act=prev]') for _ in range(4)]; page.wait_for_timeout(200)
+    page.click('[data-ex]'); page.wait_for_selector('#xmin')
+    page.fill('#xmin', '50'); page.wait_for_timeout(100)
+    check(page.input_value('#xcal') == '380', 'exedit: measured workout calories stay put')
+    check(not errs, f'exedit: no page errors {errs[:2]}')
+    br.close(); EXROWS.clear()
+
 with sync_playwright() as pw:
-    run(pw, 390, 844, 'phone'); run(pw, 820, 1180, 'ipad'); run_promote(pw)
+    run(pw, 390, 844, 'phone'); run(pw, 820, 1180, 'ipad'); run_promote(pw); run_exedit(pw)
 srv.shutdown()
 print('FAILS:', fails) if fails else print('ALL PASS')

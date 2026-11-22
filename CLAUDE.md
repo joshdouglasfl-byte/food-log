@@ -105,3 +105,7 @@ Done: phases 1-2, plan view (Mifflin-St Jeor x1.2 + manual adjustment + weekly g
 ## Next week plan (2026-11-22; no redeploy)
 - Plan card toggle `state.planScope` ('next' default, reset to 'next' whenever the Plan tab opens; 'this'). Next = card, bars and schedule sheet show next Monday's plan; goal/manual/schedule edits go through `savePlanScoped` into Profiles W `Next plan` (header added 2026-11-22) as JSON `{from: next Monday, set: {plan fields}}`; fields equal to the current plan are dropped, empty set = cleared. This = edits the current fields as before.
 - `profileFor(date)` swaps `set` in for dates >= `from`, so `planFor`/`budgetFor` give next week's budgets now. `promoteNextPlan()` (start of `syncBudgets`) copies the set into the current fields and clears `Next plan` once today >= from. Note `.plan-next` with summary + "Keep current plan" (`cancelnext`, Undo). Dietitians: food-log-sheet skill describes `Next plan`. Test: `tests/test_nextplan.py`.
+
+## Fixes 2026-11-22 noon
+- `bgRender()`: background loads (refresh, loadPlanned/ExFlags/Coach/Servings/Body, version check) no longer redraw under an open sheet, and wait while a select/input in #app has focus (redraw on its blur). Redrawing under an open iOS picker closed it (Josh: weekly goal/adjustment pickers vanished).
+- Exercise edit: planned or Estimate entries open with `estField 'cal'`, so calories follow minutes (activity rate, else the entry's own cal/min `m.ownRate`); measured entries keep both numbers. Test: `tests/test_nextplan.py` (exedit, picker).

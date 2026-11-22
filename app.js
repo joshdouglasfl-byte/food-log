@@ -101,12 +101,24 @@
         const exFlags = new Map((prev.exercise || []).filter(e => e.id).map(e => [e.id, e]));
         j.exercise.forEach(e => { const o = exFlags.get(e.id); if (o) { if (o.planned !== undefined) e.planned = o.planned; if (o.est) e.est = true; } });
         j.exLib = prev.exLib; j.dayPlans = prev.dayPlans; j.coach = prev.coach;
-        state.data = j; persist(); state.error = ''; syncBudgets(); if (!state.modal) render(); else renderSync();
+        state.data = j; persist(); state.error = ''; syncBudgets(); if (!state.modal) bgRender(); else renderSync();
       } // don't overwrite unsynced local changes
       loadPlanned(); loadExFlags(); loadExLib(); loadBody(); loadServings(); loadCoach();
     } catch (e) { state.error = String(e.message || e); if (state.data) renderSync(); else render(); }
   }
   const persist = () => { save('data', state.data); idx = null; };
+  // Redraws from background loads wait while a picker or text box is in use: redrawing the page under an open
+  // iPhone picker (weekly goal, adjustment) closes it. They run when that control loses focus, and never under a sheet.
+  let bgPending = false;
+  function bgRender() {
+    if (state.modal) return;
+    const a = document.activeElement;
+    if (a && /^(SELECT|INPUT|TEXTAREA)$/.test(a.tagName) && a.closest('#app')) {
+      if (!bgPending) { bgPending = true; a.addEventListener('blur', () => { bgPending = false; setTimeout(() => { if (!state.modal) render(); }, 0); }, { once: true }); }
+      return;
+    }
+    render();
+  }
   // Exercise Planned/Estimate flags live in the Exercise tab; read the last 30 days and later
   async function loadExFlags() {
     try {
@@ -115,7 +127,7 @@
       state.data.exercise.forEach(e => { const r = e.id && by.get(e.id); if (!r) return;
         if (r.Planned === 'Yes' || r.Planned === 'No') e.planned = r.Planned === 'Yes';
         e.est = r.Estimate === 'Yes'; });
-      persist(); if (!state.modal) render();
+      persist(); bgRender();
     } catch (e) {}
   }
   // Shared library of regular exercises (Exercises tab), with a cal/min rate per person
@@ -132,7 +144,7 @@
       const j = await api('read', { tab: 'Log', since: today() });
       const flag = new Map(j.rows.filter(r => r.EntryID).map(r => [r.EntryID, r.Planned === 'Yes']));
       state.data.log.forEach(l => { if (l.id && flag.has(l.id)) l.planned = flag.get(l.id); });
-      persist(); render();
+      persist(); bgRender();
     } catch (e) {}
   }
   // Notes from the person's dietitian (Coach Notes tab, written by Claude); Status Read once acknowledged
@@ -140,7 +152,7 @@
     try {
       const j = await api('read', { tab: 'Coach Notes', person: PERSON, limit: 30 });
       state.data.coach = j.rows.filter(r => r.EntryID && r.Message).map(r => ({ id: String(r.EntryID), date: String(r.Date).slice(0, 10), time: String(r.Time || ''), from: String(r.From || 'Dietitian'), msg: String(r.Message), read: r.Status === 'Read' }));
-      persist(); if (!state.modal) render();
+      persist(); bgRender();
     } catch (e) {}
   }
   const coachUnread = () => (state.data.coach || []).filter(n => !n.read);
@@ -169,7 +181,7 @@
       const have = new Set(rows.map(r => r.id)), queued = new Set(state.queue.flatMap(q => (q.body.rows || []).map(r => r.EntryID)));
       const keep = (state.data.servings || []).filter(x => x.local && !have.has(x.id) && (queued.has(x.id) || Date.now() - x.local < 30 * 60000));
       state.data.servings = rows.concat(keep);
-      persist(); if (!state.modal) render();
+      persist(); bgRender();
     } catch (e) {}
   }
   async function loadBody() {
@@ -179,7 +191,7 @@
         date: String(r.Date).slice(0, 10), weight: Number(r['Weight (lb)']) || null,
         fatPct: r['Body fat (%)'] === '' ? null : Number(r['Body fat (%)']), fatLb: r['Fat mass (lb)'] === '' ? null : Number(r['Fat mass (lb)']) }))
         .sort((a, b) => a.date < b.date ? -1 : 1);
-      persist(); if (state.view === 'settings' && !state.modal) render();
+      persist(); if (state.view === 'settings') bgRender();
     } catch (e) {}
   }
   const isPlanned = l => l.planned === true || (l.planned === undefined && l.date > today());
@@ -1019,7 +1031,7 @@
   }
   function quickSheet(m) { return head('Quick entry') + `<div class="sheet-body">${quickForm(m)}</div>`; }
   function exRateLine(m) {
-    const r = exRate(m.name);
+    const r = exRate(m.name) || (m.ownRate ? { rate: m.ownRate, from: 'this entry' } : null);
     if (!r) return '<div class="sub" id="xrate">No rate yet for this activity. Enter both and it will learn.</div>';
     return `<div class="sub" id="xrate">${m.estField ? `<b class="est-note">${m.estField === 'cal' ? 'Calories' : 'Minutes'} estimated</b> · ` : 'Fill one and the other is estimated · '}${(+r.rate.toFixed(1))} cal/min (${esc(r.from)})</div>`;
   }
@@ -1106,7 +1118,9 @@
     if (m.entry) {
       const e = m.entry;
       if (!e.id) return head(e.name) + `<div class="sheet-body"><div class="big-cal">${fmt(e.cal)}</div><div class="sub">calories burned</div><div class="sub">Older imported entry. Edit it in the sheet.</div></div>`;
-      if (m.name === undefined) Object.assign(m, { name: e.name, min: e.min ?? '', cal: e.cal != null ? r0(e.cal) : '', estField: null, wasEst: !!e.est });
+      // planned or estimated calories follow the minutes (at the activity's rate, else this entry's own cal/min); measured ones stay put
+      if (m.name === undefined) { const follow = (isPlannedEx(e) || e.est) && e.min > 0 && e.cal != null;
+        Object.assign(m, { name: e.name, min: e.min ?? '', cal: e.cal != null ? r0(e.cal) : '', estField: follow ? 'cal' : null, wasEst: !!e.est, ownRate: e.min > 0 && e.cal > 0 ? e.cal / e.min : null }); }
       const pl = isPlannedEx(e);
       return head(e.name) + `<div class="sheet-body"><div class="big-cal" id="xbig">${fmt(Number(m.cal) || 0)}</div><div class="sub">${pl ? '🕒 planned · ' : ''}calories burned${e.est ? ' · estimate' : ''}</div>
         ${pl ? '' : exDetails(e)}
@@ -1482,7 +1496,7 @@
     const xmin = $('#xmin'), xcal = $('#xcal');
     if (xmin && xcal && m.type === 'ex') {
       const upd = src => {
-        const r = exRate(m.name);
+        const r = exRate(m.name) || (m.ownRate ? { rate: m.ownRate } : null);
         const [mine, other, mk, ok, toOther] = src === 'min' ? [xmin, xcal, 'min', 'cal', v => Math.round(v * r.rate)] : [xcal, xmin, 'cal', 'min', v => Math.round(v / r.rate)];
         m[mk] = mine.value;
         if (m.estField === mk) m.estField = null; // he typed over the estimate: it's his number now
@@ -2169,7 +2183,7 @@
       }
       const changed = v.version !== seen;
       save('version', v.version);
-      if (changed && state.view === 'prefs' && !state.modal && state.data) render();
+      if (changed && state.view === 'prefs' && state.data) bgRender();
     } catch (e) {}
     return false;
   }

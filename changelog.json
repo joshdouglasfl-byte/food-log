@@ -2,6 +2,14 @@
  "entries": [
   {
    "date": "2026-11-22",
+   "version": "20261122121000",
+   "items": [
+    "Fixed: the weekly goal and adjustment pickers could close on their own when the app refreshed in the background",
+    "Changing the minutes on a planned or estimated exercise now recalculates its calories (like 4 hours of golf cut to 2). Workouts measured by your watch keep their calories"
+   ]
+  },
+  {
+   "date": "2026-11-22",
    "version": "20261122115000",
    "items": [
     "The plan card has a This week / Next week onward switch. It opens on Next week, so changes to your weekly goal, calorie schedule or adjustment start next Monday and leave this week alone",
