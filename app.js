@@ -100,7 +100,7 @@
         j.log.forEach(l => { if (planned.has(l.id)) l.planned = planned.get(l.id); });
         const exFlags = new Map((prev.exercise || []).filter(e => e.id).map(e => [e.id, e]));
         j.exercise.forEach(e => { const o = exFlags.get(e.id); if (o) { if (o.planned !== undefined) e.planned = o.planned; if (o.est) e.est = true; } });
-        j.exLib = prev.exLib; j.dayPlans = prev.dayPlans;
+        j.exLib = prev.exLib; j.dayPlans = prev.dayPlans; j.coach = prev.coach;
         state.data = j; persist(); state.error = ''; syncBudgets(); if (!state.modal) render(); else renderSync();
       } // don't overwrite unsynced local changes
       loadPlanned(); loadExFlags(); loadExLib(); loadBody(); loadServings(); loadCoach();
@@ -151,7 +151,8 @@
   }
   function coachSheet() {
     const ns = (state.data.coach || []).slice().reverse();
-    return head('Coach notes') + `<div class="sheet-body">${ns.length ? ns.map(n => `<div class="coach-note"><div class="coach-msg">${esc(n.msg)}</div><small>${esc(n.from)} · ${esc(shortDay(n.date))}</small></div>`).join('') : '<div class="empty">No notes yet. Your dietitian\'s replies show up here.</div>'}
+    return head('Coach notes') + `<div class="sheet-body">${ns.length ? ns.map(n => `<div class="coach-note${n.read ? '' : ' unread'}"><div class="coach-msg">${esc(n.msg)}</div>
+      <div class="coach-foot"><small>${n.read ? '' : '<b class="new-tag">New</b> '}${esc(n.from)} · ${esc(shortDay(n.date))}</small>${n.read ? '' : `<button class="btn" data-coachread="${esc(n.id)}">Got it</button>`}</div></div>`).join('') : '<div class="empty">No notes yet. Your dietitian\'s replies show up here.</div>'}
       <button class="btn big" data-m="coachreply">💬 Reply to my dietitian</button></div>`;
   }
   function coachRead(id) {
@@ -386,17 +387,23 @@
     renderSync(); bind();
     if (state.modal) renderModal();
   }
+  // 📬 inbox in the header's top-right: every coach note stays here after Got it; badge = unread count
+  function mailBtn() {
+    const n = coachUnread().length;
+    return `<button class="mail-btn${n ? ' has-new' : ''}" data-act="coachnotes" aria-label="Coach notes${n ? `, ${n} new` : ''}">✉️${n ? `<span class="badge">${n}</span>` : ''}</button>`;
+  }
+  const mailRow = () => `<div class="mail-row">${mailBtn()}</div>`;
   function header() {
     if (state.view === 'day') return `<header class="top"><div class="top-row">
       <button class="icon-btn" data-act="prev">‹</button><h1>${esc(dayLabel(state.date))}</h1>
-      <button class="icon-btn" data-act="next">›</button></div>
+      <button class="icon-btn" data-act="next">›</button></div>${mailRow()}
       <div class="top-row" style="justify-content:center;margin-top:6px;gap:6px"><span class="chip">🔥 ${streak()} days</span><span class="chip">⭐ Lv ${rewards().level}</span></div>
       <div class="sync" id="sync"></div></header>`;
     if (state.view === 'week') return `<header class="top"><div class="top-row">
       <button class="icon-btn" data-act="wprev">‹</button><h1>Week of ${esc(parse(weekStart(state.weekOf)).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }))}</h1>
-      <button class="icon-btn" data-act="wnext">›</button></div><div class="sync" id="sync"></div></header>`;
-    if (state.view === 'wiz') return `<header class="top"><div class="top-row"><h1>🪄 Meal Wizard</h1></div><div class="sync" id="sync"></div></header>`;
-    return `<header class="top"><div class="top-row"><h1>${state.view === 'prefs' ? 'Settings' : `${esc(PERSON)}’s plan`}</h1></div><div class="sync" id="sync"></div></header>`;
+      <button class="icon-btn" data-act="wnext">›</button></div>${mailRow()}<div class="sync" id="sync"></div></header>`;
+    if (state.view === 'wiz') return `<header class="top"><div class="top-row"><h1>🪄 Meal Wizard</h1></div>${mailRow()}<div class="sync" id="sync"></div></header>`;
+    return `<header class="top"><div class="top-row"><h1>${state.view === 'prefs' ? 'Settings' : `${esc(PERSON)}’s plan`}</h1></div>${mailRow()}<div class="sync" id="sync"></div></header>`;
   }
   function renderSync() {
     const el = $('#sync'); if (!el) return;
@@ -454,7 +461,6 @@
       : `<button class="btn big done" data-act="done">I'm done logging today</button>`;
     if (x.log.length) h += `<div class="tell"><button data-act="copyday">📋 Copy this day</button></div>`;
     h += `<div class="tell"><button data-tell="Dietitian">💬 Tell my dietitian</button><button data-tell="Developer">🛠 Tell my developer</button></div>`;
-    if ((state.data.coach || []).length) h += `<div class="tell"><button data-act="coachnotes">📬 Coach notes</button></div>`;
     return h;
   }
   const MACROS = [['pro', 'Protein'], ['carb', 'Carbs'], ['fat', 'Fat'], ['fib', 'Fiber']];
@@ -1308,6 +1314,7 @@
     const m = state.modal; if (!m) return;
     document.querySelectorAll('[data-m]').forEach(b => b.onclick = () => modalAct(b.dataset.m));
     bindWizModal(m);
+    document.querySelectorAll('.sheet [data-coachread]').forEach(b => b.onclick = () => coachRead(b.dataset.coachread));
     document.querySelectorAll('[data-dow]').forEach(b => b.onclick = () => { const d = b.dataset.dow; m.high = m.high || []; m.high = m.high.includes(d) ? m.high.filter(x => x !== d) : [...m.high, d]; renderModal(); });
     document.querySelectorAll('[data-xtra]').forEach(b => b.onclick = () => { m.extra = Number(b.dataset.xtra); renderModal(); });
     const xi = $('#xtra'); if (xi) xi.onchange = () => { if (Number(xi.value) > 0) { m.extra = Number(xi.value); renderModal(); } };

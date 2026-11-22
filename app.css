@@ -19,6 +19,12 @@ header.top { position: sticky; top: 0; z-index: 5; background: var(--bg);
   font-size: 1.3rem; background: var(--card); border: 1px solid var(--line); }
 .chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 999px;
   background: var(--card); border: 1px solid var(--line); font-size: .85rem; font-weight: 600; }
+.mail-row { max-width: 720px; margin: 0 auto; height: 0; position: relative; z-index: 1; }
+.mail-btn { position: absolute; right: 0; top: 4px; width: 36px; height: 36px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 1.05rem; background: var(--card); border: 1px solid var(--line); }
+.mail-btn.has-new { border-color: var(--green); }
+.mail-btn .badge { position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px; padding: 0 4px;
+  border-radius: 9px; background: var(--over); color: #fff; font-size: .7rem; font-weight: 700; line-height: 18px; text-align: center; }
 .sync { font-size: .8rem; color: var(--muted); text-align: center; margin-top: 4px; }
 .sync.warn { color: var(--over); }
 
@@ -241,6 +247,8 @@ input, textarea, select { -webkit-user-select: text; user-select: text; }
 .coach-note:first-of-type { border-top: 0; }
 .coach-msg { white-space: pre-wrap; line-height: 1.4; margin-bottom: 6px; }
 .coach-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.coach-note.unread .coach-msg { font-weight: 600; }
+.new-tag { color: var(--green); }
 .coach-foot span { display: flex; gap: 10px; align-items: center; }
 .scanbox { position: relative; border-radius: 14px; overflow: hidden; background: #000; }
 .scanbox video { display: block; width: 100%; max-height: 46vh; object-fit: cover; }

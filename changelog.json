@@ -1,6 +1,14 @@
 {
  "entries": [
   {
+   "date": "2026-11-22",
+   "version": "20261122104500",
+   "items": [
+    "New ✉️ button in the top-right corner of every screen: it holds all your dietitian's notes, even after you tap Got it. A red number shows how many are new",
+    "Fixed: a dietitian note could vanish from Today when you came back to the app; it now stays until you tap Got it"
+   ]
+  },
+  {
    "date": "2026-11-21",
    "version": "20261121221700",
    "items": [
