@@ -2,6 +2,13 @@
  "entries": [
   {
    "date": "2026-11-22",
+   "version": "20261122110500",
+   "items": [
+    "When your watch sends a workout that was already planned (like a bike ride), the planned one is hidden right away so it doesn't count twice, with a note under Exercise saying what it replaced. With two rides planned, the watch ride replaces the one closest in length"
+   ]
+  },
+  {
+   "date": "2026-11-22",
    "version": "20261122105500",
    "items": [
     "Fixed: when Josh and Michelle started a watch workout in the same minute, only one of them came through. Michelle's 8:20 ride from today has been added"

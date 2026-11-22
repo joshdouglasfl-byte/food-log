@@ -206,15 +206,34 @@
 
   // ---------- derived ----------
   let idx = null; // cached lookups
+  // Until the dietitian's hourly run deletes them, hide planned rows that an Apple Watch workout has already replaced,
+  // using the dietitian's rule: one for one, same activity, closest minutes; near-ties go longer plan to the day's first watch workout.
+  // Only watch rows the dietitian hasn't handled yet (Planned blank) count; handled ones already had their plan deleted.
+  const exKey = n => { const k = String(n || '').trim().toLowerCase(); return k.startsWith('golf') ? 'golf' : k; };
+  function watchReplaced(list) {
+    const watch = list.filter(e => e.source === 'Apple Watch' && e.planned === undefined).sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    const pool = list.filter(e => e.source !== 'Apple Watch' && isPlannedEx(e)); const hidden = [], seen = {};
+    for (const w of watch) {
+      const k = exKey(w.name), first = !seen[k]; seen[k] = true;
+      const c = pool.filter(p => exKey(p.name) === k && !hidden.includes(p)); if (!c.length) continue;
+      const diff = p => w.min && p.min ? Math.abs(p.min - w.min) : Math.abs((p.cal || 0) - (w.cal || 0)) / 8;
+      c.sort((a, b) => diff(a) - diff(b));
+      let pick = c[0];
+      if (c[1] && diff(c[1]) - diff(c[0]) <= 10) { const two = [c[0], c[1]].sort((a, b) => (b.min || b.cal / 8 || 0) - (a.min || a.cal / 8 || 0)); pick = first ? two[0] : two[1]; }
+      hidden.push(pick);
+    }
+    return { keep: list.filter(e => !hidden.includes(e)), hidden };
+  }
   function I() {
     if (idx) return idx;
     const d = state.data;
     const foodById = new Map(d.foods.map(f => [f.id, f]));
     const logByDate = new Map(); d.log.forEach(l => { if (!logByDate.has(l.date)) logByDate.set(l.date, []); logByDate.get(l.date).push(l); });
     const exByDate = new Map(); d.exercise.forEach(x => { if (!exByDate.has(x.date)) exByDate.set(x.date, []); exByDate.get(x.date).push(x); });
+    const exHidden = new Map(); exByDate.forEach((list, date) => { const r = watchReplaced(list); if (r.hidden.length) { exByDate.set(date, r.keep); exHidden.set(date, r.hidden); } });
     const dayByDate = new Map(d.days.map(x => [x.date, x]));
     const planByDate = new Map(d.plan.map(x => [x.date, x]));
-    return (idx = { foodById, logByDate, exByDate, dayByDate, planByDate });
+    return (idx = { foodById, logByDate, exByDate, exHidden, dayByDate, planByDate });
   }
   const profile = () => state.data.profile || {};
   const visibleSlots = () => {
@@ -453,6 +472,7 @@
     h += `<section class="card"><h2>Exercise<small>${x.burned ? fmt(x.burned) + ' cal' : ''}${exPl ? ` · 🕒 ${fmt(exPl)} planned` : ''}</small></h2>
       ${x.ex.map((e, i) => `<div class="entry ${isPlannedEx(e) ? 'planned' : ''}" role="button" data-ex="${i}"><div class="nm"><div>${isPlannedEx(e) ? '🕒 ' : ''}${esc(e.name)}${e.est ? '<span class="est">EST</span>' : ''}</div><small>${e.min ? r0(e.min) + ' min' : ''}${isPlannedEx(e) ? ' · planned' : ` ${esc(e.source || '')}`}</small></div><div class="cal">${fmt(e.cal)}</div>
         ${state.date <= today() && e.id ? `<button class="ate-btn ${isPlannedEx(e) ? '' : 'on'}" data-exdid="${i}" aria-label="${isPlannedEx(e) ? 'Did it' : 'Done, tap to move back to planned'}">✓</button>` : ''}</div>`).join('') || '<div class="empty">No exercise yet</div>'}
+      ${(I().exHidden.get(state.date) || []).length ? `<div class="sub" style="text-align:left;margin:6px 0 0">⌚️ Your watch replaced ${(I().exHidden.get(state.date)).map(e => `planned ${esc(e.name)}${e.min ? ` (${r0(e.min)} min)` : ''}`).join(', ')}</div>` : ''}
       <button class="add-line" data-act="addex">+ Add exercise</button></section>`;
     if (waterOn()) h += `<section class="card"><h2>Water</h2><div class="water"><div class="cups">💧 ${r0(x.water)} fl oz</div>
       <button class="btn ghost" data-water="-8">−8</button><button class="btn" data-water="8">+8 oz</button></div></section>`;
