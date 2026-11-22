@@ -334,3 +334,9 @@ input[type=search] { -webkit-appearance: none; appearance: none; } input[type=se
 .wz-warn { color: var(--gold); font-weight: 600; text-align: left; }
 nav.tabs button { min-width: 58px; }
 .wz-sug .nm div { white-space: normal; }
+
+.ex-details { text-align: left; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin: 10px 0; display: grid; gap: 6px; font-size: .92rem; line-height: 1.35; }
+.ex-details.muted { color: var(--muted); }
+.lift-row { display: flex; justify-content: space-between; gap: 10px; }
+.lift-row small { color: var(--muted); text-align: right; }
+.ex-edit-h { margin: 14px 0 4px; font-size: .95rem; color: var(--muted); }

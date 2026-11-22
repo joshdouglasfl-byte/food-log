@@ -40,6 +40,7 @@ function handle_(p) {
       case 'foodSearch': return out_(foodSearch_(p));
       // generic actions: new features use these, so the script rarely needs redeploying
       case 'read': return out_(gRead_(p));
+      case 'readWB': return out_(wbRead_(p));
       case 'append': return out_(gAppend_(p));
       case 'update': return out_(gUpdate_(p));
       case 'delete': return out_(gDelete_(p));
@@ -386,6 +387,23 @@ function gCell_(v, r) {
   return v === null || v === undefined ? '' : v;
 }
 function gOut_(v) { return v instanceof Date ? (v.getHours() || v.getMinutes() ? Utilities.formatDate(v, TZ, "yyyy-MM-dd'T'HH:mm") : ymd_(v)) : v; }
+
+/** readWB: {tab (default Sets), person?, since?, limit?} -> rows from the Workout Buddy sheet, read-only.
+ *  Blank Person there means Josh. Lets Food Log show a weight session's sets without the Workout Buddy key. */
+const WB_SHEET_ID = '1hmU_XKOhSxIM_eculF_hw0agBoI6TKY7EnNb10x5go0';
+const WB_TABS = ['Sets', 'Progress', 'Exercises'];
+function wbRead_(p) {
+  const tab = p.tab || 'Sets';
+  if (WB_TABS.indexOf(tab) < 0) return { ok: false, error: 'tab not allowed' };
+  const s = SpreadsheetApp.openById(WB_SHEET_ID).getSheetByName(tab); if (!s) return { ok: true, rows: [] };
+  const v = s.getDataRange().getValues(); const h = v.shift().map(String);
+  const pi = h.indexOf('Person'), di = h.indexOf('Date');
+  let rows = v.filter(r => r.some(x => x !== ''));
+  if (p.person && pi >= 0) rows = rows.filter(r => (r[pi] || 'Josh') === p.person);
+  if (p.since && di >= 0) rows = rows.filter(r => ymd_(r[di]) >= p.since);
+  if (p.limit) rows = rows.slice(-p.limit);
+  return { ok: true, header: h, rows: rows.map(r => Object.fromEntries(h.map((k, i) => [k, gOut_(r[i])]))) };
+}
 
 /** read: {tab, person?, since?, limit?} -> rows as objects */
 function gRead_(p) {

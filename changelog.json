@@ -2,6 +2,14 @@
  "entries": [
   {
    "date": "2026-11-22",
+   "version": "20261122112000",
+   "items": [
+    "Tap a done exercise to see its details: start and end time, calories per minute, how it compares to your usual for that activity, records (like your longest ride in 90 days) and how many you've done today and this week",
+    "Weight sessions also show the Workout Buddy sets you did during that workout, total reps and pounds moved, and any new bests (needs the sheet script update)"
+   ]
+  },
+  {
+   "date": "2026-11-22",
    "version": "20261122110500",
    "items": [
     "When your watch sends a workout that was already planned (like a bike ride), the planned one is hidden right away so it doesn't count twice, with a note under Exercise saying what it replaced. With two rides planned, the watch ride replaces the one closest in length"

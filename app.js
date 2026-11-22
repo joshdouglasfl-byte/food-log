@@ -993,6 +993,77 @@
       ${exRateLine(m)}
       ${entry || wizOf(m) ? '' : `<div class="toggle-row" style="border-top:0"><span>🕒 Planned${future ? '' : ' (not done yet)'}</span><button class="switch ${m.planned ? 'on' : ''}" data-m="xplan"></button></div>`}`;
   }
+  // ---------- done-exercise details: time, pace vs usual, records, and the Workout Buddy session for lifting ----------
+  const LIFT = new Set(['weight lifting', 'weightlifting', 'strength training', 'weights']);
+  const isLift = e => LIFT.has(exKey(e.name)) || e.source === 'Workout Buddy';
+  const hm = (h, m) => { const d = new Date(2000, 0, 1, h, m); return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); };
+  function exStart(e) { const t = String(e.id || '').match(/^AW-\d{8}(\d{2})(\d{2})/); return t ? { h: +t[1], m: +t[2] } : null; }
+  function exDetails(e) {
+    const rows = [], st = exStart(e), k = exKey(e.name), lname = String(e.name).toLowerCase();
+    const src = e.source === 'Apple Watch' ? 'your Apple Watch' : e.source === 'Workout Buddy' ? 'Workout Buddy' : '';
+    if (st) { const end = st.h * 60 + st.m + r0(e.min); rows.push(`⏱ ${hm(st.h, st.m)}${e.min ? ` – ${hm(Math.floor(end / 60) % 24, end % 60)}` : ''}${src ? ` · from ${src}` : ''}`); }
+    else if (src) rows.push(`From ${src}`);
+    const rate = e.min > 0 && e.cal > 0 ? e.cal / e.min : 0;
+    if (rate) rows.push(`🔥 ${(+rate.toFixed(1))} cal/min`);
+    // same activity, done, before this one (earlier days, or earlier the same day)
+    const past = state.data.exercise.filter(x => x !== e && exKey(x.name) === k && !isPlannedEx(x) && x.cal > 0 && (x.date < e.date || (x.date === e.date && String(x.id) < String(e.id))));
+    const win = n => past.filter(x => x.date >= addDays(e.date, -n));
+    const p90 = win(90).filter(x => x.min > 0);
+    if (p90.length >= 3 && e.min > 0) {
+      const am = p90.reduce((a, x) => a + x.min, 0) / p90.length, ar = p90.reduce((a, x) => a + x.cal / x.min, 0) / p90.length;
+      const dm = r0(e.min - am), dr = rate && ar ? Math.round((rate / ar - 1) * 100) : 0;
+      rows.push(`📊 Your usual ${esc(lname)}: ${r0(am)} min, ${(+ar.toFixed(1))} cal/min (last 90 days, ${p90.length} times)${dm ? ` · this one ${Math.abs(dm)} min ${dm > 0 ? 'longer' : 'shorter'}` : ''}${Math.abs(dr) >= 5 ? `, ${Math.abs(dr)}% ${dr > 0 ? 'harder' : 'easier'}` : ''}`);
+    }
+    // records: the longest window this entry tops
+    const best = (key, label) => { for (const n of [365, 90, 30]) { const w = win(n); if (w.length >= 2 && w.every(x => key(x) < key(e))) return `🏆 ${label.replace('#', esc(lname))} in ${n === 365 ? 'a year' : n + ' days'}`; } return ''; };
+    [best(x => x.min || 0, 'Longest #'), best(x => x.cal || 0, 'Most calories for #'), rate ? best(x => x.min > 0 ? x.cal / x.min : 0, 'Highest cal/min for #') : ''].filter(Boolean).forEach(r => rows.push(r));
+    const ws = weekStart(e.date), wk = [...past.filter(x => x.date >= ws), e].filter(x => x.date >= ws && x.date <= addDays(ws, 6));
+    const order = list => list.sort((a, b) => a.date.localeCompare(b.date) || String(a.id).localeCompare(String(b.id))).indexOf(e) + 1;
+    const dayN = order([...past.filter(x => x.date === e.date), e]), wkN = order(wk);
+    if (dayN > 1) rows.push(`📅 ${ordinal(dayN)} ${esc(lname)} of the day${wkN > dayN ? `, ${ordinal(wkN)} this week` : ''}`);
+    else if (wkN > 1) rows.push(`📅 ${ordinal(wkN)} ${esc(lname)} this week`);
+    let h = rows.length ? `<div class="ex-details">${rows.map(r => `<div>${r}</div>`).join('')}</div>` : '';
+    if (isLift(e)) h += liftDetails(e);
+    return h;
+  }
+  const ordinal = n => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th');
+  // Workout Buddy sets, read-only through the Food Log script (readWB); cached for the session
+  let wbSets = null, wbLoading = false, wbFailed = false;
+  async function loadWB() {
+    if (wbLoading || wbSets) return; wbLoading = true;
+    try { const j = await api('readWB', { tab: 'Sets', person: PERSON, since: addDays(today(), -400) }); wbSets = (j.rows || []).filter(r => r.Exercise); }
+    catch (err) { wbFailed = true; }
+    wbLoading = false; if (state.modal && state.modal.type === 'ex' && state.modal.entry) renderModal();
+  }
+  function liftDetails(e) {
+    if (wbFailed) return '';
+    if (!wbSets) { loadWB(); return '<div class="ex-details muted">Loading your Workout Buddy session…</div>'; }
+    const day = wbSets.filter(r => String(r.Date).slice(0, 10) === e.date);
+    if (!day.length) return '';
+    const st = exStart(e), sess = [...new Set(day.map(r => String(r['Session ID'])))];
+    let pick = sess;
+    if (st && e.min) {   // sessions that started during this watch workout (Session ID ends in HHMM)
+      const a = st.h * 60 + st.m, b = a + r0(e.min);
+      const inWin = sess.filter(id => { const t = id.match(/-(\d{2})(\d{2})$/); if (!t) return false; const v = +t[1] * 60 + +t[2]; return v >= a - 15 && v <= b; });
+      if (inWin.length) pick = inWin; else return '';
+    }
+    const sets = day.filter(r => pick.includes(String(r['Session ID'])));
+    const byEx = new Map(); sets.forEach(r => { if (!byEx.has(r.Exercise)) byEx.set(r.Exercise, []); byEx.get(r.Exercise).push(r); });
+    const n = v => Number(String(v).replace(/[^\d.]/g, '')) || 0;
+    let reps = 0, vol = 0; const prs = [];
+    const lines = [...byEx].map(([ex, rs]) => {
+      rs.forEach(r => { reps += n(r.Reps); vol += n(r.Reps) * n(r['Weight (lb)']); });
+      const before = wbSets.filter(r => r.Exercise === ex && String(r.Date).slice(0, 10) < e.date);
+      const top = Math.max(...rs.map(r => n(r['Weight (lb)']))), prevTop = Math.max(0, ...before.map(r => n(r['Weight (lb)'])));
+      if (top > 0 && before.length && top > prevTop) prs.push(`${esc(ex)}: top weight ever, ${top} lb`);
+      else if (before.length) { const atTop = rs.filter(r => n(r['Weight (lb)']) === top), bestNow = Math.max(...atTop.map(r => n(r.Reps))), bestBefore = Math.max(0, ...before.filter(r => n(r['Weight (lb)']) === top).map(r => n(r.Reps)));
+        if (bestBefore && bestNow > bestBefore) prs.push(`${esc(ex)}: ${bestNow} reps at ${top || 'body'}${top ? ' lb' : 'weight'}, a new best`); }
+      const fmtSet = r => `${n(r['Weight (lb)']) ? n(r['Weight (lb)']) + '×' : ''}${n(r.Reps)}${r.Side && r.Side !== 'Both' ? r.Side[0] : ''}`;
+      return `<div class="lift-row"><span>${esc(ex)}</span><small>${rs.map(fmtSet).join(', ')}</small></div>`;
+    });
+    return `<div class="ex-details"><div><b>🏋️ Workout Buddy session</b></div>${lines.join('')}
+      <div>${sets.length} sets · ${fmt(reps)} reps${vol ? ` · ${fmt(vol)} lb moved` : ''}</div>${prs.map(p => `<div>🏆 ${p}</div>`).join('')}</div>`;
+  }
   function exSheet(m) {
     if (m.entry) {
       const e = m.entry;
@@ -1000,8 +1071,9 @@
       if (m.name === undefined) Object.assign(m, { name: e.name, min: e.min ?? '', cal: e.cal != null ? r0(e.cal) : '', estField: null, wasEst: !!e.est });
       const pl = isPlannedEx(e);
       return head(e.name) + `<div class="sheet-body"><div class="big-cal" id="xbig">${fmt(Number(m.cal) || 0)}</div><div class="sub">${pl ? '🕒 planned · ' : ''}calories burned${e.est ? ' · estimate' : ''}</div>
+        ${pl ? '' : exDetails(e)}
         ${state.date <= today() ? (pl ? '<button class="btn big done" data-m="exdid" style="margin-bottom:10px">✓ I did this</button>' : '<button class="btn big ghost" data-m="exreplan" style="margin-bottom:10px">🕒 Move back to planned</button>') : ''}
-        ${exForm(m, true)}
+        ${pl ? '' : '<h3 class="ex-edit-h">Edit</h3>'}${exForm(m, true)}
         <button class="btn big" data-m="exupd">Save</button><button class="danger" data-m="exdel">Delete exercise</button></div>`;
     }
     if (m.name) return head(m.name, true) + `<div class="sheet-body">${exForm(m, false)}<button class="btn big" data-m="exsave">${wizOf(m) ? 'Add to plan' : `Add to ${esc(dayLabel(state.date))}`}</button></div>`;
