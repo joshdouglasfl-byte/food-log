@@ -2,6 +2,14 @@
  "entries": [
   {
    "date": "2026-11-22",
+   "version": "20261122182500",
+   "items": [
+    "Sync now in Settings updates the Last sync time when it works, and tells you Synced (or why it didn't)",
+    "Today's Exercise heading shows when the next Apple Watch update runs, e.g. (Next Watch update 7:24 PM)"
+   ]
+  },
+  {
+   "date": "2026-11-22",
    "version": "20261122121000",
    "items": [
     "Fixed: the weekly goal and adjustment pickers could close on their own when the app refreshed in the background",

@@ -85,7 +85,7 @@
     if (state.modal && state.modal.food === tmp) state.modal.food = real;
     persist();
   }
-  async function refresh() {
+  async function refresh(manual) {
     try {
       await flush();
       const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), 45000);
@@ -101,10 +101,14 @@
         const exFlags = new Map((prev.exercise || []).filter(e => e.id).map(e => [e.id, e]));
         j.exercise.forEach(e => { const o = exFlags.get(e.id); if (o) { if (o.planned !== undefined) e.planned = o.planned; if (o.est) e.est = true; } });
         j.exLib = prev.exLib; j.dayPlans = prev.dayPlans; j.coach = prev.coach;
-        state.data = j; persist(); state.error = ''; syncBudgets(); if (!state.modal) bgRender(); else renderSync();
+        state.data = j; persist(); state.error = ''; syncBudgets();
       } // don't overwrite unsynced local changes
+      state.error = state.queue.length ? state.error : '';
+      if (!state.queue.length) save('lastSync', new Date().toISOString());
+      if (!state.modal) bgRender(); else renderSync();
+      if (manual) toast(state.queue.length ? `Synced, ${state.queue.length} change${state.queue.length === 1 ? '' : 's'} still waiting` : 'Synced ✓');
       loadPlanned(); loadExFlags(); loadExLib(); loadBody(); loadServings(); loadCoach();
-    } catch (e) { state.error = String(e.message || e); if (state.data) renderSync(); else render(); }
+    } catch (e) { state.error = String(e.message || e); if (state.data) { if (manual && !state.modal) bgRender(); else renderSync(); } else render(); if (manual) toast(`Sync failed: ${state.error}`); }
   }
   const persist = () => { save('data', state.data); idx = null; };
   // Redraws from background loads wait while a picker or text box is in use: redrawing the page under an open
@@ -452,6 +456,17 @@
     if (state.view === 'wiz') return `<header class="top"><div class="top-row"><h1>🪄 Meal Wizard</h1></div>${mailRow(1)}<div class="sync" id="sync"></div></header>`;
     return `<header class="top"><div class="top-row"><h1>${state.view === 'prefs' ? 'Settings' : `${esc(PERSON)}’s plan`}</h1></div>${mailRow(1)}<div class="sync" id="sync"></div></header>`;
   }
+  // The "Food Log hourly" scheduled task picks up Apple Watch workouts at :24 past each hour, 7:24 AM to 10:24 PM (Eastern).
+  // Keep WATCH_RUN in step with that task's schedule.
+  const WATCH_RUN = { min: 24, first: 7, last: 22 };
+  function nextWatchRun(now = new Date()) {
+    const t = new Date(now); t.setSeconds(0, 0);
+    let h = t.getHours(); if (t.getMinutes() >= WATCH_RUN.min) h++;
+    if (h < WATCH_RUN.first) h = WATCH_RUN.first;
+    if (h > WATCH_RUN.last) h = WATCH_RUN.first;
+    const ap = h < 12 ? 'AM' : 'PM', h12 = h % 12 || 12;
+    return `${h12}:${String(WATCH_RUN.min).padStart(2, '0')} ${ap}`;
+  }
   function renderSync() {
     const el = $('#sync'); if (!el) return;
     const n = state.queue.length;
@@ -497,7 +512,7 @@
     const hidden = x.log.filter(l => !visibleSlots().includes(l.meal));
     if (hidden.length) h += `<section class="card"><h2>Other<small>${fmt(hidden.reduce((a, l) => a + l.cal, 0))} cal</small></h2>${hidden.map(l => `<div class="entry"><div class="nm"><div>${esc(l.name)}</div><small>${esc(l.meal)}</small></div><div class="cal">${fmt(l.cal)}${macroCell(l)}</div></div>`).join('')}</section>`;
     const exPl = x.ex.filter(isPlannedEx).reduce((a, e) => a + (e.cal || 0), 0);
-    h += `<section class="card"><h2>Exercise<small>${x.burned ? fmt(x.burned) + ' cal' : ''}${exPl ? ` · 🕒 ${fmt(exPl)} planned` : ''}</small></h2>
+    h += `<section class="card"><h2><span>Exercise${state.date === today() ? `<span class="watch-next">(Next Watch update ${esc(nextWatchRun())})</span>` : ''}</span><small>${x.burned ? fmt(x.burned) + ' cal' : ''}${exPl ? ` · 🕒 ${fmt(exPl)} planned` : ''}</small></h2>
       ${x.ex.map((e, i) => `<div class="entry ${isPlannedEx(e) ? 'planned' : ''}" role="button" data-ex="${i}"><div class="nm"><div>${isPlannedEx(e) ? '🕒 ' : ''}${esc(e.name)}${e.est ? '<span class="est">EST</span>' : ''}</div><small>${e.min ? r0(e.min) + ' min' : ''}${isPlannedEx(e) ? ' · planned' : ` ${esc(e.source || '')}`}</small></div><div class="cal">${fmt(e.cal)}</div>
         ${state.date <= today() && e.id ? `<button class="ate-btn ${isPlannedEx(e) ? '' : 'on'}" data-exdid="${i}" aria-label="${isPlannedEx(e) ? 'Did it' : 'Done, tap to move back to planned'}">✓</button>` : ''}</div>`).join('') || '<div class="empty">No exercise yet</div>'}
       ${(I().exHidden.get(state.date) || []).length ? `<div class="sub" style="text-align:left;margin:6px 0 0">⌚️ Your watch replaced ${(I().exHidden.get(state.date)).map(e => `planned ${esc(e.name)}${e.min ? ` (${r0(e.min)} min)` : ''}`).join(', ')}</div>` : ''}
@@ -741,10 +756,14 @@
       <section class="card"><h2>Badges</h2><div class="badges">${rw.badges.map(([e, n, got]) => `<div class="badge ${got ? 'got' : ''}"><span class="e">${e}</span>${esc(n)}</div>`).join('')}</div>
       <div class="sub" style="margin:10px 0 0">XP: 10 per day logged, +10 for done, +15 for done under budget, +25 per week of streak</div></section>`;
   }
+  function lastSyncText() {
+    const t = load('lastSync', '') || state.data.serverTime;
+    return t ? new Date(t).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'not yet';
+  }
   function prefsView() {
     const vs = visibleSlots();
     return `<section class="card"><h2>Sync</h2><div class="sub" style="text-align:left;margin:0 0 4px">${state.queue.length ? `${state.queue.length} change${state.queue.length === 1 ? '' : 's'} waiting to save (next: ${esc(state.queue[0].action)}${state.queue[0].tries ? `, tried ${state.queue[0].tries}×` : ''})` : 'All changes saved'}${state.error ? ` · last error: ${esc(state.error)}` : ''}${load('failed', []).length ? ` · ${load('failed', []).length} set aside` : ''}</div>
-      <div class="sub" style="text-align:left;margin:0 0 10px">Last sync ${esc(new Date(state.data.serverTime || Date.now()).toLocaleString())}</div>
+      <div class="sub" style="text-align:left;margin:0 0 10px">Last sync ${esc(lastSyncText())}</div>
       <button class="btn big" data-act="refresh">${state.syncing ? 'Syncing…' : '⟳ Sync now'}</button></section>
       <section class="card"><h2>Meal sections</h2>${ALL_SLOTS.map(s => `<div class="toggle-row"><span>${s}</span><button class="switch ${vs.includes(s) ? 'on' : ''}" data-slot="${s}"></button></div>`).join('')}</section>
       <section class="card"><h2>Extras</h2><div class="toggle-row"><span>Track water</span><button class="switch ${waterOn() ? 'on' : ''}" data-act="water"></button></div>
@@ -1459,7 +1478,7 @@
     else if (a === 'cancelnext') return cancelNextPlan();
     else if (a === 'coachnotes') return openModal({ type: 'coach' });
     else if (a === 'haeurl') return copyText(haeUrl(), 'Health Auto Export URL');
-    else if (a === 'refresh') { toast('Syncing…'); return refresh(); }
+    else if (a === 'refresh') { toast('Syncing…'); return refresh(true); }
     else if (a === 'done') {
       setDayFlag({ done: true });
       const x = dayTotals(state.date), st = streak();
