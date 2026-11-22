@@ -162,7 +162,12 @@
   async function loadServings() {
     try {
       const j = await api('read', { tab: 'Servings' });
-      state.data.servings = j.rows.filter(r => r.FoodID && Number(r.Grams) > 0).map(r => ({ food: r.FoodID, unit: String(r.Unit || 'Serving'), grams: Number(r.Grams), id: r.EntryID }));
+      const rows = j.rows.filter(r => r.FoodID && Number(r.Grams) > 0).map(r => ({ food: r.FoodID, unit: String(r.Unit || 'Serving'), grams: Number(r.Grams), id: r.EntryID }));
+      // keep servings added on this device that the sheet doesn't have yet (still queued, or the read raced the save);
+      // otherwise a just-scanned food loses its Serving unit and 2 servings gets logged as 2 grams
+      const have = new Set(rows.map(r => r.id)), queued = new Set(state.queue.flatMap(q => (q.body.rows || []).map(r => r.EntryID)));
+      const keep = (state.data.servings || []).filter(x => x.local && !have.has(x.id) && (queued.has(x.id) || Date.now() - x.local < 30 * 60000));
+      state.data.servings = rows.concat(keep);
       persist(); if (!state.modal) render();
     } catch (e) {}
   }
@@ -673,13 +678,10 @@
 
   // ---------- Apple Watch (Health Auto Export) ----------
   // Health Auto Export on the iPhone posts workouts to the sheet script (?source=hae), which adds Source 'Apple Watch' rows (id AW-<start>).
-  const haeUrl = () => `${CFG.API_URL}?source=hae&person=${encodeURIComponent(PERSON)}&key=${encodeURIComponent(load('key', ''))}`;
   function watchCard() {
     const last = state.data.exercise.filter(e => e.source === 'Apple Watch').sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.id).localeCompare(String(a.id)))[0];
     return `<section class="card"><h2>⌚️ Apple Watch</h2>
-      <div class="sub" style="text-align:left;margin:0 0 10px">Last watch workout received: ${last ? `${esc(dayLabel(last.date))}, ${esc(last.name)}, ${fmt(last.cal)} cal` : 'none yet'}</div>
-      <div class="sub" style="text-align:left;margin:0 0 10px">For Health Auto Export: copy this and paste it as the URL of its REST API automation. It's ${esc(PERSON)}'s own link.</div>
-      <div class="watch-copy"><button class="btn" data-act="copyhae">Copy Health Auto Export URL</button></div></section>`;
+      <div class="sub" style="text-align:left;margin:0">Last watch workout received: ${last ? `${esc(dayLabel(last.date))}, ${esc(last.name)}, ${fmt(last.cal)} cal` : 'none yet'}</div></section>`;
   }
   async function copyText(t, label) {
     try { await navigator.clipboard.writeText(t); toast(`${label} copied`); }
@@ -803,7 +805,7 @@
     state.data.foods.push(f); enqueue('addFood', { food: { ...f } });
     if (x.servingG) {
       const sv = { food: f.id, unit: 'Serving', grams: x.servingG, id: uid('S') };
-      (state.data.servings = state.data.servings || []).push(sv);
+      sv.local = Date.now(); (state.data.servings = state.data.servings || []).push(sv);
       enqueue('append', { tab: 'Servings', headers: ['FoodID', 'Unit', 'Grams', 'Note', 'EntryID'], rows: [{ FoodID: f.id, Unit: 'Serving', Grams: sv.grams, Note: 'USDA serving' + (x.servingText ? ' (' + x.servingText + ')' : ''), EntryID: sv.id }] });
     }
     persist();
@@ -1141,7 +1143,7 @@
       enqueue('addFood', { food: { ...f } });
       if (Number(p.serving_quantity) > 0) {
         const sv = { food: f.id, unit: 'Serving', grams: Number(p.serving_quantity), id: uid('S') };
-        (state.data.servings = state.data.servings || []).push(sv);
+        sv.local = Date.now(); (state.data.servings = state.data.servings || []).push(sv);
         enqueue('append', { tab: 'Servings', headers: ['FoodID', 'Unit', 'Grams', 'Note', 'EntryID'], rows: [{ FoodID: f.id, Unit: 'Serving', Grams: sv.grams, Note: 'Open Food Facts serving size', EntryID: sv.id }] });
       }
       persist();
@@ -1282,7 +1284,6 @@
     else if (a === 'copyday') return openModal({ type: 'copy' });
     else if (a === 'news') return openNews();
     else if (a === 'coachnotes') return openModal({ type: 'coach' });
-    else if (a === 'copyhae') return copyText(haeUrl(), 'Health Auto Export URL');
     else if (a === 'refresh') { toast('Syncing…'); return refresh(); }
     else if (a === 'done') {
       setDayFlag({ done: true });
@@ -1407,7 +1408,9 @@
     if (a === 'foodsave') {
       const f = I().foodById.get(m.food), qty = Number($('#fqty').value);
       if (!(qty > 0)) return toast('Enter an amount');
-      closeModal(); return addEntries([entryFromFood(f, qty, m.slot, $('#funit') ? $('#funit').value : f.unit)]);
+      // read the unit before closing: closeModal removes the sheet, and a missing select fell back to the food's base unit (2 servings -> 2 g)
+      const unit = $('#funit') ? $('#funit').value : (m.unit || f.unit);
+      closeModal(); return addEntries([entryFromFood(f, qty, m.slot, unit)]);
     }
     if (a === 'mealsave') {
       const off = m.off || [];
@@ -1487,7 +1490,7 @@
       const g = Number($('#svg').value); if (!(g > 0)) return toast('Enter grams for one serving');
       const f = I().foodById.get(m.food || m.entry?.food), sv = { food: f.id, unit: 'Serving', grams: g, id: uid('S') };
       if (servingsFor(f).some(x => x.unit === 'Serving')) { renderModal(); return toast('This food already has a serving'); }
-      (state.data.servings = state.data.servings || []).push(sv); persist();
+      sv.local = Date.now(); (state.data.servings = state.data.servings || []).push(sv); persist();
       enqueue('append', { tab: 'Servings', headers: ['FoodID', 'Unit', 'Grams', 'Note', 'EntryID'], rows: [{ FoodID: f.id, Unit: 'Serving', Grams: g, Note: 'Set in app', EntryID: sv.id }] });
       renderModal(); return toast(`Serving saved: ${g} g`);
     }

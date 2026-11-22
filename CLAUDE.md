@@ -79,3 +79,7 @@ Done: phases 1-2, plan view (Mifflin-St Jeor x1.2 + manual adjustment + weekly g
 
 ## Macro banner (2026-11-21)
 - Today banner: Protein / Carbs / Fat / Fiber chips (`MACROS`, `state.macro`, not persisted). Tapping one shows that macro per entry (`macroCell`, blank = orange "— g") and per meal header; tap again clears. Macro goals (added same evening): Profiles S:V 'Protein goal (g)', 'Carbs goal (g)', 'Fat goal (g)', 'Fiber goal (g)' (blank = none), edited in Plan > Macro goals card via saveSettings. Chips show 'v / goal g' + bar; protein/fiber = minimum (green when met), carbs/fat = limit (red when over).
+
+## Developer feedback 2026-11-21 night
+- Bug (since 2026-11-20 unit dropdowns): foodsave called closeModal() before reading #funit, so the entry fell back to the food's base unit (2 Serving saved as 2 Gram). Now reads the unit first. Fixed Michelle's affected rows 10579, 10580, 10584 (Log). loadServings also keeps local servings (sv.local) the sheet doesn't have yet.
+- .qty-row .field inputs shrink (min-width 0) so the iPad date box fits; Apple Watch card's HAE URL copy button removed (Josh: no longer needed).

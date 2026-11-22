@@ -287,3 +287,6 @@ input[type=search] { -webkit-appearance: none; appearance: none; } input[type=se
 .macgoals .field input { width: 100%; min-width: 0; }
 .mac b { white-space: nowrap; font-size: .9rem; }
 .mac small { font-size: .7rem; }
+/* two fields side by side (e.g. goal + target date): let inputs shrink so iOS date boxes don't spill past the card */
+.qty-row .field { min-width: 0; }
+.qty-row .field input { width: 100%; min-width: 0; -webkit-appearance: none; appearance: none; }
