@@ -264,15 +264,23 @@ function haeWorkouts_(p) {
     if (!end || end <= start) { skipped++; return; }
     const secs = Number(w.duration) || (end ? (end - start) / 1000 : 0);
     const local = haeLocal_(w.start, start);   // the workout's own local date/time (not the sheet's time zone)
-    const id = 'AW-' + local.stamp;
+    // Josh keeps AW-<stamp>; anyone else gets a -<initial> suffix so two people starting in the same minute don't collide
+    const id = 'AW-' + local.stamp + (p.person === 'Josh' ? '' : '-' + p.person.charAt(0));
     const name = HAE_ACTIVITY[raw] || raw || 'Workout';
     if (findRowById_(TABS.exercise, 'EntryID', id)) { skipped++; return; }
+    if (p.person !== 'Josh' && haeLegacyRow_(p.person, 'AW-' + local.stamp)) { skipped++; return; }   // added before 2026-11-22 without the suffix
     addExercise_({ person: p.person, entry: { id, date: local.date, name,
       min: Math.max(1, Math.round(secs / 60)), cal, source: 'Apple Watch' } });
     added++;
   });
   haeLog_(p.person, ws.length, added, notes);
   return { ok: true, received: ws.length, added, skipped };
+}
+// true when this person already has a row with the old (unsuffixed) id
+function haeLegacyRow_(person, id) {
+  const s = sh_(TABS.exercise); const c = ensureIdCol_(TABS.exercise, 'EntryID');
+  const hits = s.getRange(2, c, Math.max(s.getLastRow() - 1, 1), 1).createTextFinder(id).matchEntireCell(true).findAll();
+  return hits.some(h => s.getRange(h.getRow(), 2).getValue() === person);
 }
 // Date and yyyyMMddHHmm as written in the workout's own time ("2026-11-21 08:09:00 -0500"), else in Eastern time
 function haeLocal_(s, d) {

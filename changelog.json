@@ -2,6 +2,13 @@
  "entries": [
   {
    "date": "2026-11-22",
+   "version": "20261122105500",
+   "items": [
+    "Fixed: when Josh and Michelle started a watch workout in the same minute, only one of them came through. Michelle's 8:20 ride from today has been added"
+   ]
+  },
+  {
+   "date": "2026-11-22",
    "version": "20261122105000",
    "items": [
     "Michelle: the Copy Health Auto Export URL button is back in Settings > Apple Watch, for setting up automatic watch workouts",
