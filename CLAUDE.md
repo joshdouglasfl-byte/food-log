@@ -76,3 +76,6 @@ Done: phases 1-2, plan view (Mifflin-St Jeor x1.2 + manual adjustment + weekly g
 ## Add sheet steadiness (2026-11-21)
 - While searching, renderModal swaps only `#addres` (results) when the same add modal/tab/slot is open (the meal chooser row was removed 2026-11-21: the slot comes from the tapped "+ Add food" and the title says "Add to <slot>"), so the `#q` input node, focus and iOS keyboard stay put; the add sheet is `.sheet.tall` (fixed 92% height) so it doesn't resize as results change; the overlay follows `visualViewport` (top/height) so the sheet sits above the keyboard; `html.modal-open` stops the page behind from scrolling.
 - Search input: type=search, enterkeyhint=search, autocorrect/autocapitalize/spellcheck off. iOS's form bar (up/down/✓ above the keyboard) can't be hidden from a web page.
+
+## Macro banner (2026-11-21)
+- Today banner: Protein / Carbs / Fat / Fiber chips (`MACROS`, `state.macro`, not persisted). Tapping one shows that macro per entry (`macroCell`, blank = orange "— g") and per meal header; tap again clears. No macro goals yet (Josh: totals only for now).

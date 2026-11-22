@@ -37,7 +37,19 @@ header.top { position: sticky; top: 0; z-index: 5; background: var(--bg);
 .bar .fill { position: absolute; inset: 0 auto 0 0; background: var(--green-2); border-radius: 8px; }
 .bar .fill.over { background: var(--over); }
 .bar .mark { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--ink); opacity: .5; }
-.macros { display: flex; gap: 14px; font-size: .85rem; color: var(--muted); justify-content: center; }
+.macros { display: flex; gap: 14px; font-size: .85rem; color: var(--muted); justify-content: center; flex-wrap: wrap; }
+.macros:empty { display: none; }
+.mac { display: flex; flex-direction: column; align-items: center; min-width: 64px; padding: 6px 8px; border-radius: 12px;
+  border: 1px solid var(--line); color: var(--muted); font-size: .8rem; line-height: 1.2; }
+.mac b { color: var(--ink); font-size: .95rem; font-variant-numeric: tabular-nums; }
+.mac.on { background: var(--green); border-color: var(--green); color: #fff; }
+.mac.on b { color: #fff; }
+.macros:has(.mac) { gap: 8px; margin-top: 4px; }
+.mac-hint { text-align: center; font-size: .8rem; color: var(--muted); margin-top: 6px; }
+.mac-miss { color: var(--gold); font-weight: 700; }
+.entry .cal { text-align: right; }
+.mac-val { display: block; font-size: .78rem; font-weight: 500; color: var(--green-2); }
+.mac-val.miss { color: var(--gold); font-weight: 700; }
 
 /* meals */
 .entry { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); }

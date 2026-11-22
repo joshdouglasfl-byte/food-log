@@ -36,7 +36,7 @@
 
   const state = {
     data: load('data', null), queue: load('queue', []), view: 'day', date: today(),
-    weekOf: today(), syncing: false, error: '', modal: null
+    weekOf: today(), syncing: false, error: '', modal: null, macro: null
   };
   const uid = p => p + Math.random().toString(36).slice(2, 10);
 
@@ -279,9 +279,10 @@
     const eaten = log.reduce((a, l) => a + (l.cal || 0), 0);
     const burned = ex.reduce((a, x) => a + (x.cal || 0), 0);
     const budget = budgetFor(date);
-    const pro = log.reduce((a, l) => a + (l.pro || 0), 0), fib = log.reduce((a, l) => a + (l.fib || 0), 0);
+    const sum = k => log.reduce((a, l) => a + (l[k] || 0), 0);
+    const pro = sum('pro'), fib = sum('fib'), carb = sum('carb'), fat = sum('fat');
     const day = dayByDate.get(date) || {};
-    return { log, ex, eaten, burned, budget, left: budget + burned - eaten, pro, fib, done: !!day.done, water: day.water || 0 };
+    return { log, ex, eaten, burned, budget, left: budget + burned - eaten, pro, fib, carb, fat, done: !!day.done, water: day.water || 0 };
   }
   function defaultSlot() {
     const h = new Date().getHours() + new Date().getMinutes() / 60, v = visibleSlots();
@@ -418,13 +419,15 @@
       <div><b>${fmt(x.burned)}</b><span>Exercise</span></div><div class="left ${over ? 'over' : ''}"><b>${fmt(Math.abs(x.left))}</b><span>${over ? 'Over' : 'Left'}</span></div></div>`;
     let h = coachCard() + `<section class="card">${summary}
       <div class="bar"><div class="fill ${over ? 'over' : ''}" style="width:${pct}%"></div>${x.burned ? `<div class="mark" style="left:${markPct}%"></div>` : ''}</div>
-      <div class="macros"><span>Protein ${r0(x.pro)} g</span><span>Fiber ${r0(x.fib)} g</span>${x.log.some(isPlanned) ? `<span>🕒 ${fmt(x.log.filter(isPlanned).reduce((a, l) => a + l.cal, 0))} planned</span>` : ''}</div></section>`;
+      <div class="macros">${MACROS.map(([k, lb]) => `<button class="mac ${state.macro === k ? 'on' : ''}" data-macro="${k}">${lb} <b>${r0(x[k])} g</b></button>`).join('')}</div>
+      ${state.macro ? `<div class="mac-hint">Showing ${macroName()} for each food · ${x.log.filter(l => l[state.macro] == null).length ? `<span class="mac-miss">${x.log.filter(l => l[state.macro] == null).length} missing</span>` : 'none missing'} · tap again to hide</div>` : ''}
+      <div class="macros">${x.log.some(isPlanned) ? `<span>🕒 ${fmt(x.log.filter(isPlanned).reduce((a, l) => a + l.cal, 0))} planned</span>` : ''}</div></section>`;
     for (const slot of visibleSlots()) {
       const items = x.log.filter(l => l.meal === slot);
       const tot = items.reduce((a, l) => a + (l.cal || 0), 0);
-      h += `<section class="card"><h2>${slot}<small>${items.length ? fmt(tot) + ' cal' : ''}</small></h2>
+      h += `<section class="card"><h2>${slot}<small>${items.length ? fmt(tot) + ' cal' : ''}${items.length && state.macro ? ` · ${r0(items.reduce((a, l) => a + (l[state.macro] || 0), 0))} g ${macroName()}` : ''}</small></h2>
         ${items.map(l => `<div class="entry ${isPlanned(l) ? 'planned' : ''}" role="button" data-entry="${esc(l.id || '')}" data-ekey="${esc(entryKey(l))}">
-          <div class="nm"><div>${isPlanned(l) ? '🕒 ' : ''}${esc(l.name)}${l.est ? '<span class="est">EST</span>' : ''}</div><small>${esc(qtyText(l))}${isPlanned(l) ? ' · planned' : ''}</small></div><div class="cal">${fmt(l.cal)}</div>
+          <div class="nm"><div>${isPlanned(l) ? '🕒 ' : ''}${esc(l.name)}${l.est ? '<span class="est">EST</span>' : ''}</div><small>${esc(qtyText(l))}${isPlanned(l) ? ' · planned' : ''}</small></div><div class="cal">${fmt(l.cal)}${macroCell(l)}</div>
           ${l.id ? `<button class="swipe-del" data-swdel="${esc(entryKey(l))}">Delete</button>` : ''}
           ${state.date <= today() && (isPlanned(l) || l.id) ? `<button class="ate-btn ${isPlanned(l) ? '' : 'on'}" data-ate="${esc(entryKey(l))}" aria-label="${isPlanned(l) ? 'Ate it' : 'Eaten, tap to move back to planned'}">✓</button>` : ''}</div>`).join('')}
         ${state.date <= today() && items.filter(isPlanned).length > 1 ? `<button class="add-line" data-confirm="${slot}">✓ Ate all ${items.filter(isPlanned).length} planned items</button>` : ''}
@@ -432,7 +435,7 @@
     }
     // hidden-slot entries (e.g. old Early Snacks) still show so totals make sense
     const hidden = x.log.filter(l => !visibleSlots().includes(l.meal));
-    if (hidden.length) h += `<section class="card"><h2>Other<small>${fmt(hidden.reduce((a, l) => a + l.cal, 0))} cal</small></h2>${hidden.map(l => `<div class="entry"><div class="nm"><div>${esc(l.name)}</div><small>${esc(l.meal)}</small></div><div class="cal">${fmt(l.cal)}</div></div>`).join('')}</section>`;
+    if (hidden.length) h += `<section class="card"><h2>Other<small>${fmt(hidden.reduce((a, l) => a + l.cal, 0))} cal</small></h2>${hidden.map(l => `<div class="entry"><div class="nm"><div>${esc(l.name)}</div><small>${esc(l.meal)}</small></div><div class="cal">${fmt(l.cal)}${macroCell(l)}</div></div>`).join('')}</section>`;
     const exPl = x.ex.filter(isPlannedEx).reduce((a, e) => a + (e.cal || 0), 0);
     h += `<section class="card"><h2>Exercise<small>${x.burned ? fmt(x.burned) + ' cal' : ''}${exPl ? ` · 🕒 ${fmt(exPl)} planned` : ''}</small></h2>
       ${x.ex.map((e, i) => `<div class="entry ${isPlannedEx(e) ? 'planned' : ''}" role="button" data-ex="${i}"><div class="nm"><div>${isPlannedEx(e) ? '🕒 ' : ''}${esc(e.name)}${e.est ? '<span class="est">EST</span>' : ''}</div><small>${e.min ? r0(e.min) + ' min' : ''}${isPlannedEx(e) ? ' · planned' : ` ${esc(e.source || '')}`}</small></div><div class="cal">${fmt(e.cal)}</div>
@@ -448,6 +451,11 @@
     if ((state.data.coach || []).length) h += `<div class="tell"><button data-act="coachnotes">📬 Coach notes</button></div>`;
     return h;
   }
+  const MACROS = [['pro', 'Protein'], ['carb', 'Carbs'], ['fat', 'Fat'], ['fib', 'Fiber']];
+  const macroName = () => (MACROS.find(m => m[0] === state.macro) || [, ''])[1].toLowerCase();
+  // Selected macro under each food's calories; blank values flagged so missing macros stand out
+  const macroCell = l => !state.macro ? '' : l[state.macro] == null
+    ? '<small class="mac-val miss">— g</small>' : `<small class="mac-val">${r0(l[state.macro])} g</small>`;
   const entryKey = l => l.id || `${l.date}|${l.meal}|${l.name}|${l.qty}`;
   const qtyText = l => `${+Number(l.qty || 0).toFixed(2)} ${l.unit || ''}`.trim();
 
@@ -1186,6 +1194,7 @@
   function bind() {
     document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => { state.view = b.dataset.view; if (state.view === 'day') state.date = today(); if (state.view === 'week') state.weekOf = state.date; render(); scrollTo(0, 0); });
     document.querySelectorAll('[data-act]').forEach(b => b.onclick = () => act(b.dataset.act));
+    document.querySelectorAll('[data-macro]').forEach(b => b.onclick = () => { state.macro = state.macro === b.dataset.macro ? null : b.dataset.macro; render(); });
     document.querySelectorAll('[data-addslot]').forEach(b => b.onclick = () => openModal({ type: 'add', slot: b.dataset.addslot, tab: 'foods' }));
     bindSwipe();
     document.querySelectorAll('[data-swdel]').forEach(b => b.onclick = ev => { ev.stopPropagation(); swipeDelete(b.dataset.swdel); });
