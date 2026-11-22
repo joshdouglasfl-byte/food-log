@@ -111,5 +111,5 @@ Done: phases 1-2, plan view (Mifflin-St Jeor x1.2 + manual adjustment + weekly g
 - Exercise edit: planned or Estimate entries open with `estField 'cal'`, so calories follow minutes (activity rate, else the entry's own cal/min `m.ownRate`); measured entries keep both numbers. Test: `tests/test_nextplan.py` (exedit, picker).
 
 ## Feedback 2026-11-22 evening (no redeploy)
-- Settings > Sync:  now reads localStorage , saved on every bootstrap fetch that leaves no queued changes (before, it showed  of the last data swap, so a tap that didn't swap data left it stale). Sync now passes : toast "Synced ✓" / "N still waiting" / "Sync failed: …".
-- Today's Exercise heading: "(Next Watch update h:24 AM/PM)" from  {min 24, first 7, last 22}, matching the "Food Log hourly" scheduled task (cron 24 7-22 ET). Change both together. Test: .
+- Settings > Sync: `Last sync` now reads localStorage `lastSync`, saved on every bootstrap fetch that leaves no queued changes (before, it showed `serverTime` from the last data swap, so a tap that didn't swap data left it stale). Sync now calls `refresh(true)`: toast "Synced ✓" / "N still waiting" / "Sync failed: ...".
+- Today's Exercise heading: "(Next Watch update h:24 AM/PM)" from `WATCH_RUN` {min 24, first 7, last 22}, matching the "Food Log hourly" scheduled task (cron 24 7-22 ET). Change both together. Test: `tests/test_sync.py`.
