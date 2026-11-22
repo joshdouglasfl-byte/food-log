@@ -23,7 +23,7 @@ Done: phases 1-2, plan view (Mifflin-St Jeor x1.2 + manual adjustment + weekly g
 
 ## Open
 - Barcode scan confirmed working on Josh's phone 2026-11-20.
-- Michelle's dietitian: `michelle-dietitian` skill, hosted in Josh's Claude (run in his "Dietitian plan refresh" task), on top of the shared `food-log-sheet` skill. Josh's dietitian logs her Workout Buddy calories and Withings weigh-ins. Waiting on: her reply to the starter email (goals) and her Health Auto Export setup (then set her WB `Watch Calories` = `Shortcut`).
+- Michelle's dietitian: `michelle-dietitian` skill, hosted in Josh's Claude (run in his "Dietitian plan refresh" task), on top of the shared `food-log-sheet` skill. Josh's dietitian logs her Workout Buddy calories and Withings weigh-ins. Her goals arrived 2026-11-22 (CNGOAL note); Health Auto Export set up on her phone 2026-11-22 and her WB `Watch Calories` = `Shortcut` (Settings row added). Her 2026-11-21 manual run/weights entries were cleared as duplicates of the watch rows.
 - Michelle's Cal AI history import: dropped (2026-11-21, little data there).
 
 ## Done 2026-11-21
