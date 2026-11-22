@@ -83,7 +83,7 @@ Done: phases 1-2, plan view (Mifflin-St Jeor x1.2 + manual adjustment + weekly g
 
 ## Developer feedback 2026-11-21 night
 - Bug (since 2026-11-20 unit dropdowns): foodsave called closeModal() before reading #funit, so the entry fell back to the food's base unit (2 Serving saved as 2 Gram). Now reads the unit first. Fixed Michelle's affected rows 10579, 10580, 10584 (Log). loadServings also keeps local servings (sv.local) the sheet doesn't have yet.
-- .qty-row .field inputs shrink (min-width 0) so the iPad date box fits; Apple Watch card's HAE URL copy button removed (Josh: no longer needed).
+- .qty-row .field inputs shrink (min-width 0) so the iPad date box fits; Apple Watch card's HAE URL copy button removed (Josh: no longer needed); restored 2026-11-22 for Michelle (always shown on her page; on Josh's only until his first watch workout arrives).
 
 ## Meal Wizard (2026-11-21; no redeploy)
 - 5th nav tab `wiz` (🪄 Wizard). Code: the "🪄 Meal Wizard" section of app.js (`wiz*`/`wz*`). State `state.wiz` saved in localStorage key `wiz` (date, items, ex, noEx, chk, tol, name). Runs fully in the browser on the 365-day bootstrap log; no new script actions.

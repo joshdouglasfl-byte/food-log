@@ -392,7 +392,7 @@
     const n = coachUnread().length;
     return `<button class="mail-btn${n ? ' has-new' : ''}" data-act="coachnotes" aria-label="Coach notes${n ? `, ${n} new` : ''}">✉️${n ? `<span class="badge">${n}</span>` : ''}</button>`;
   }
-  const mailRow = () => `<div class="mail-row">${mailBtn()}</div>`;
+  const mailRow = (inline) => `<div class="mail-row${inline ? ' inline' : ''}">${mailBtn()}</div>`;
   function header() {
     if (state.view === 'day') return `<header class="top"><div class="top-row">
       <button class="icon-btn" data-act="prev">‹</button><h1>${esc(dayLabel(state.date))}</h1>
@@ -402,8 +402,8 @@
     if (state.view === 'week') return `<header class="top"><div class="top-row">
       <button class="icon-btn" data-act="wprev">‹</button><h1>Week of ${esc(parse(weekStart(state.weekOf)).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }))}</h1>
       <button class="icon-btn" data-act="wnext">›</button></div>${mailRow()}<div class="sync" id="sync"></div></header>`;
-    if (state.view === 'wiz') return `<header class="top"><div class="top-row"><h1>🪄 Meal Wizard</h1></div>${mailRow()}<div class="sync" id="sync"></div></header>`;
-    return `<header class="top"><div class="top-row"><h1>${state.view === 'prefs' ? 'Settings' : `${esc(PERSON)}’s plan`}</h1></div>${mailRow()}<div class="sync" id="sync"></div></header>`;
+    if (state.view === 'wiz') return `<header class="top"><div class="top-row"><h1>🪄 Meal Wizard</h1></div>${mailRow(1)}<div class="sync" id="sync"></div></header>`;
+    return `<header class="top"><div class="top-row"><h1>${state.view === 'prefs' ? 'Settings' : `${esc(PERSON)}’s plan`}</h1></div>${mailRow(1)}<div class="sync" id="sync"></div></header>`;
   }
   function renderSync() {
     const el = $('#sync'); if (!el) return;
@@ -688,8 +688,12 @@
   function watchCard() {
     const last = state.data.exercise.filter(e => e.source === 'Apple Watch').sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.id).localeCompare(String(a.id)))[0];
     return `<section class="card"><h2>⌚️ Apple Watch</h2>
-      <div class="sub" style="text-align:left;margin:0">Last watch workout received: ${last ? `${esc(dayLabel(last.date))}, ${esc(last.name)}, ${fmt(last.cal)} cal` : 'none yet'}</div></section>`;
+      <div class="sub" style="text-align:left;margin:0">Last watch workout received: ${last ? `${esc(dayLabel(last.date))}, ${esc(last.name)}, ${fmt(last.cal)} cal` : 'none yet'}</div>
+      ${PERSON !== 'Josh' || !last ? `<button class="btn ghost" style="margin-top:10px;width:100%" data-act="haeurl">📋 Copy Health Auto Export URL</button>
+      <div class="sub" style="text-align:left;margin:6px 0 0">Paste it into Health Auto Export on ${PERSON === 'Josh' ? 'your' : `${esc(PERSON)}’s`} iPhone (REST API automation, Workouts, JSON).</div>` : ''}</section>`;
   }
+  // this person's own link: Apps Script can't read headers, so person and key ride in the query
+  const haeUrl = () => `${CFG.API_URL}?source=hae&person=${encodeURIComponent(PERSON)}&key=${encodeURIComponent(load('key', ''))}`;
   async function copyText(t, label) {
     try { await navigator.clipboard.writeText(t); toast(`${label} copied`); }
     catch (e) { window.prompt(`Copy the ${label.toLowerCase()}`, t); }
@@ -1293,6 +1297,7 @@
     else if (a === 'copyday') return openModal({ type: 'copy' });
     else if (a === 'news') return openNews();
     else if (a === 'coachnotes') return openModal({ type: 'coach' });
+    else if (a === 'haeurl') return copyText(haeUrl(), 'Health Auto Export URL');
     else if (a === 'refresh') { toast('Syncing…'); return refresh(); }
     else if (a === 'done') {
       setDayFlag({ done: true });
