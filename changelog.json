@@ -2,6 +2,14 @@
  "entries": [
   {
    "date": "2026-11-22",
+   "version": "20261122115000",
+   "items": [
+    "The plan card has a This week / Next week onward switch. It opens on Next week, so changes to your weekly goal, calorie schedule or adjustment start next Monday and leave this week alone",
+    "A waiting plan shows as a note on the card (like \"Next week: lose 1 lb/week\"), with Keep current plan to cancel it. It switches on by itself when the new week starts"
+   ]
+  },
+  {
+   "date": "2026-11-22",
    "version": "20261122112000",
    "items": [
     "Tap a done exercise to see its details: start and end time, calories per minute, how it compares to your usual for that activity, records (like your longest ride in 90 days) and how many you've done today and this week",

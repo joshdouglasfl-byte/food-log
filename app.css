@@ -340,3 +340,8 @@ nav.tabs button { min-width: 58px; }
 .lift-row { display: flex; justify-content: space-between; gap: 10px; }
 .lift-row small { color: var(--muted); text-align: right; }
 .ex-edit-h { margin: 14px 0 4px; font-size: .95rem; color: var(--muted); }
+/* plan card: This week / Next week onward */
+.plan-scope { margin-top: 4px; }
+.plan-next { background: #eef4ef; border-radius: 10px; padding: 8px 10px; margin: 0 0 10px; font-size: .9rem; line-height: 1.4; }
+.plan-next .muted { color: var(--muted); }
+.plan-next .link-btn { padding: 0 0 0 4px; text-decoration: underline; }

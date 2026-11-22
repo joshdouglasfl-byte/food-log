@@ -36,7 +36,7 @@
 
   const state = {
     data: load('data', null), queue: load('queue', []), view: 'day', date: today(),
-    weekOf: today(), syncing: false, error: '', modal: null, macro: null
+    weekOf: today(), syncing: false, error: '', modal: null, macro: null, planScope: 'next'
   };
   const uid = p => p + Math.random().toString(36).slice(2, 10);
 
@@ -249,8 +249,23 @@
     const b = (state.data.body || []).filter(x => x.weight && x.date <= date).pop() || (state.data.body || []).filter(x => x.weight).pop();
     return b ? b.weight : null;
   }
+  // Future plan (This week / Next week onward toggle): Profiles 'Next plan' holds JSON {from: Monday, set: {plan fields}}.
+  // Dates on or after `from` use the profile with those fields swapped in; on that Monday it becomes the current plan.
+  function nextPlan() {
+    try { const n = JSON.parse(profile()['Next plan'] || ''); return n && n.from && n.set && Object.keys(n.set).length ? n : null; } catch (e) { return null; }
+  }
+  function profileFor(date) { const p = profile(), n = nextPlan(); return n && date >= n.from ? { ...p, ...n.set } : p; }
+  const nextWeekStart = () => addDays(weekStart(today()), 7);
+  const scopeDate = () => state.planScope === 'this' ? today() : nextWeekStart();
+  // On or after the Monday it starts, the future plan becomes the current plan (fields copied, Next plan cleared)
+  function promoteNextPlan() {
+    const n = nextPlan(); if (!n || today() < n.from) return false;
+    const settings = { ...n.set, 'Next plan': '' };
+    Object.assign(state.data.profile, settings); enqueue('saveSettings', { settings });
+    return true;
+  }
   function planFor(date) {
-    const p = profile(), wt = latestWeight(date);
+    const p = profileFor(date), wt = latestWeight(date);
     const h = Number(p['Height (in)']), bd = p['Birthday'], sex = String(p['Sex'] || '').toLowerCase();
     if (!wt || !h || !bd) return null;
     const d = parse(date), b = parse(bd);
@@ -290,6 +305,7 @@
   }
   // Keep the sheet's Days budgets for today and later in step with the plan
   function syncBudgets() {
+    promoteNextPlan();
     const t = today();
     for (const d of state.data.days) {
       if (d.date < t) continue;
@@ -547,11 +563,32 @@
     return `<section class="card">${top}</section>
       <section class="card">${rows}<div class="sub" style="margin:8px 0 0">Under (−) or over (+) each day. Faded rows are projected.</div></section>`;
   }
+  const goalShort = g => g === 0 ? 'maintain' : `${g < 0 ? 'lose' : 'gain'} ${Math.abs(g)} lb/week`;
+  // What the waiting future plan changes, in a few words ("lose 1 lb/week · −300 adjustment · high Sat, Sun +300")
+  function nextPlanSummary() {
+    const n = nextPlan(); if (!n) return '';
+    const cur = planFor(addDays(n.from, -1)), nx = planFor(n.from); if (!cur || !nx) return '';
+    const bits = [];
+    if (nx.goal !== cur.goal) bits.push(goalShort(nx.goal));
+    if (nx.manual !== cur.manual) bits.push(nx.manual ? `${nx.manual < 0 ? '−' : '+'}${fmt(Math.abs(nx.manual))} adjustment` : 'no adjustment');
+    if (nx.sch.high.join() !== cur.sch.high.join() || nx.sch.extra !== cur.sch.extra) bits.push(nx.sch.high.length ? `high ${nx.sch.high.join(', ')} +${fmt(nx.sch.extra)}` : 'same every day');
+    return bits.length ? bits.join(' · ') : 'same as now';
+  }
+  function planScopeBar() {
+    const sc = state.planScope === 'this' ? 'this' : 'next';
+    return `<div class="seg plan-scope">${[['this', 'This week'], ['next', 'Next week onward']].map(([k, n]) => `<button class="${sc === k ? 'on' : ''}" data-pscope="${k}">${n}</button>`).join('')}</div>`;
+  }
+  function planNote() {
+    const n = nextPlan(); if (!n) return '';
+    const when = parse(n.from).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+    return `<div class="plan-next">📅 Next week: <b>${esc(nextPlanSummary())}</b> <span class="muted">· starts ${esc(when)}</span>${state.planScope === 'this' ? '' : ' <button class="link-btn" data-act="cancelnext">Keep current plan</button>'}</div>`;
+  }
   function planCard() {
-    const pl = planFor(today());
+    const sd = scopeDate(), isNext = state.planScope !== 'this';
+    const pl = planFor(sd);
     if (!pl) return `<section class="card"><h2>My plan</h2><div class="empty">Add birthday, sex, height and a weigh-in to the Profiles and Body tabs to calculate a plan.</div></section>`;
     const goalTxt = pl.goal === 0 ? 'maintain your weight' : `${pl.goal < 0 ? 'lose' : 'gain'} ${Math.abs(pl.goal)} lb per week`;
-    const ws = weekStart(today()), days = [...Array(7)].map((_, i) => addDays(ws, i));
+    const ws = weekStart(sd), days = [...Array(7)].map((_, i) => addDays(ws, i));
     const tg = days.map(d => Math.round(pl.base + pl.sch.adj[parse(d).getDay()]));
     const lo = Math.min(pl.burn, ...tg) * 0.6, mx = Math.max(pl.burn, ...tg) * 1.03, pct = v => (v - lo) / (mx - lo) * 100;
     // upright bars, one per day, with a dashed line at the average day so high and low days read at a glance
@@ -566,12 +603,13 @@
       return `<div class="vcol"><span class="vval" style="bottom:${lblAt}px">${fmt(t)}</span><div class="vbar ${hi ? 'hi' : lo ? 'lo' : ''}" style="height:${hb}px"></div><div class="vday">${parse(d).toLocaleDateString(undefined, { weekday: 'short' }).slice(0, 2)}</div></div>`;
     }).join('')}</div>`;
     const wk = tg.reduce((a, b) => a + b, 0);
-    return `<section class="card"><h2>My plan</h2>
+    return `<section class="card"><h2>My plan</h2>${planScopeBar()}${planNote()}
+      <div class="sub" style="text-align:left;margin:0 0 6px">${isNext ? `Changes here start ${esc(parse(ws).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' }))}. This week stays as it is.` : 'Changes here apply now, to today and the rest of this week.'}</div>
       <p class="plan-txt">At ${pl.age}, ${Math.floor(pl.h / 12)}′${Math.round(pl.h % 12)}″ and ${pl.wt} lb, your sedentary burn is ${pl.manual ? `${fmt(pl.sedentary)}, and with your ${pl.manual < 0 ? '−' : '+'}${fmt(Math.abs(pl.manual))} manual adjustment it’s <b>${fmt(pl.burn)}</b>` : `<b>${fmt(pl.burn)}</b>`} cal a day.
       Your plan is to <b>${goalTxt}</b>${pl.daily ? `, ${pl.daily < 0 ? 'minus' : 'plus'} ${fmt(Math.abs(pl.daily))} a day` : ''}, for a daily target of <b>${fmt(pl.base)}</b>.</p>
       ${rows}
       <div class="plan-legend"><span><i class="tgt"></i>Target</span>${pl.sch.high.length ? '<span><i class="hi"></i>High day</span>' : ''}<span><i class="avgl"></i>Average day ${fmt(avgDay)}</span></div>
-      <div class="sub" style="margin:6px 0 0">Week total ${fmt(wk)} cal · exercise adds to each day · this week’s days already logged keep their budget</div>
+      <div class="sub" style="margin:6px 0 0">${isNext ? 'Next week' : 'Week'} total ${fmt(wk)} cal · exercise adds to each day${isNext ? '' : ' · this week’s days already logged keep their budget'}</div>
       <div class="field" style="margin-top:12px"><label>Weekly goal</label><select id="goalsel">${[...new Set([...GOALS, pl.goal])].sort((a, b) => a - b).map(g => `<option value="${g}" ${g === pl.goal ? 'selected' : ''}>${g === 0 ? 'Maintain' : (g < 0 ? 'Lose ' : 'Gain ') + Math.abs(g) + ' lb a week'}</option>`).join('')}</select></div>
       <div class="field"><label>Manual adjustment to burn</label><select id="mansel">${[...new Set([-500, -400, -300, -250, -200, -150, -100, -50, 0, 50, 100, 200, 300, pl.manual])].sort((a, b) => a - b).map(v => `<option value="${v}" ${v === pl.manual ? 'selected' : ''}>${v ? (v > 0 ? '+' : '−') + Math.abs(v) + ' cal a day' : 'None'}</option>`).join('')}</select></div>
       <div class="field"><label>Calorie schedule</label>
@@ -1126,9 +1164,9 @@
 
   // ---------- calorie schedule flow ----------
   function schedSheet(m) {
-    const pl = planFor(today()), sel = m.high || [], x = m.extra ?? 150, H = sel.length;
+    const pl = planFor(scopeDate()), sel = m.high || [], x = m.extra ?? 150, H = sel.length;
     const ok = H > 0 && H < 7, low = pl.base - x * H / 7;
-    return head('Calorie schedule') + `<div class="sheet-body">
+    return head(state.planScope === 'this' ? 'Schedule · this week' : 'Schedule · next week on') + `<div class="sheet-body">
       <div class="sub" style="text-align:left;margin:0 0 6px">High days (eat more)</div>
       <div class="dow">${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => `<button class="${sel.includes(d) ? 'on' : ''}" data-dow="${d}">${d}</button>`).join('')}</div>
       <div class="sub" style="text-align:left;margin:14px 0 6px">How much more on high days</div>
@@ -1138,7 +1176,7 @@
       <button class="btn big" data-m="schedsave">${ok ? 'Save schedule' : 'Save (no schedule)'}</button></div>`;
   }
   function saveSchedule(high, extra) {
-    savePlan({ 'High days': high.join(','), 'High day extra (cal)': extra, 'Weekend adjustment (cal)': 0, 'Weekday adjustment (cal)': 0 });
+    savePlanScoped({ 'High days': high.join(','), 'High day extra (cal)': extra, 'Weekend adjustment (cal)': 0, 'Weekday adjustment (cal)': 0 });
     closeModal(); render();
   }
 
@@ -1312,7 +1350,7 @@
   }
 
   function bind() {
-    document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => { state.view = b.dataset.view; if (state.view === 'day') state.date = today(); if (state.view === 'week') state.weekOf = state.date; if (state.view === 'wiz') loadDayPlans(); render(); scrollTo(0, 0); });
+    document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => { state.view = b.dataset.view; if (state.view === 'day') state.date = today(); if (state.view === 'week') state.weekOf = state.date; if (state.view === 'wiz') loadDayPlans(); if (state.view === 'settings') state.planScope = 'next'; render(); scrollTo(0, 0); });
     if (state.view === 'wiz') bindWiz();
     document.querySelectorAll('[data-act]').forEach(b => b.onclick = () => act(b.dataset.act));
     document.querySelectorAll('[data-macro]').forEach(b => b.onclick = () => { state.macro = state.macro === b.dataset.macro ? null : b.dataset.macro; render(); });
@@ -1329,17 +1367,18 @@
       const was = isPlannedEx(e); markExPlanned(e, !was); render();
       toast(was ? `${e.name} done` : `${e.name} back to planned`, 'Undo', () => { markExPlanned(e, was); render(); }); });
     document.querySelectorAll('[data-water]').forEach(b => b.onclick = () => setDayFlag({ water: Math.max(0, dayTotals(state.date).water + Number(b.dataset.water)) }));
-    const gs = $('#goalsel'); if (gs) gs.onchange = () => savePlan({ 'Weekly goal (lb/week)': Number(gs.value) });
+    const gs = $('#goalsel'); if (gs) gs.onchange = () => savePlanScoped({ 'Weekly goal (lb/week)': Number(gs.value) });
     document.querySelectorAll('[data-prange]').forEach(b => b.onclick = () => { state.progRange = b.dataset.prange; state.progOff = 0; render(); });
     document.querySelectorAll('[data-poff]').forEach(b => b.onclick = () => { state.progOff = Math.min(0, (state.progOff || 0) + Number(b.dataset.poff)); render(); });
     const PK = () => PROG_KEYS[load('progMetric', 'fat')];
     const fg = $('#fgoal'); if (fg) fg.onchange = () => savePlan({ [PK().goal]: fg.value === '' ? '' : Number(fg.value) });
     document.querySelectorAll('[data-macgoal]').forEach(inp => inp.onchange = () => { const v = Math.round(Number(inp.value)); savePlan({ [inp.dataset.macgoal]: v > 0 ? v : '' }); });
     const fd = $('#fdate'); if (fd) fd.onchange = () => savePlan({ [PK().date]: fd.value });
+    document.querySelectorAll('[data-pscope]').forEach(b => b.onclick = () => { state.planScope = b.dataset.pscope; render(); });
     document.querySelectorAll('[data-pmetric]').forEach(b => b.onclick = () => { save('progMetric', b.dataset.pmetric); render(); });
-    document.querySelectorAll('[data-m-open=sched]').forEach(b => b.onclick = () => { const sc = schedule(profile()); openModal({ type: 'sched', high: [...sc.high], extra: sc.extra || 150 }); });
-    const ms = $('#mansel'); if (ms) ms.onchange = () => savePlan({ 'Manual adjustment (cal)': Number(ms.value) });
-    const wk = $('#wkndsel'); if (wk) wk.onchange = () => { const v = Number(wk.value); savePlan({ 'Weekend adjustment (cal)': v, 'Weekday adjustment (cal)': -Math.round(v * 2 / 5) }); };
+    document.querySelectorAll('[data-m-open=sched]').forEach(b => b.onclick = () => { const sc = schedule(profileFor(scopeDate())); openModal({ type: 'sched', high: [...sc.high], extra: sc.extra || 150 }); });
+    const ms = $('#mansel'); if (ms) ms.onchange = () => savePlanScoped({ 'Manual adjustment (cal)': Number(ms.value) });
+    const wk = $('#wkndsel'); if (wk) wk.onchange = () => { const v = Number(wk.value); savePlanScoped({ 'Weekend adjustment (cal)': v, 'Weekday adjustment (cal)': -Math.round(v * 2 / 5) }); };
     document.querySelectorAll('[data-ate]').forEach(b => b.onclick = ev => {
       ev.stopPropagation();
       const l = (I().logByDate.get(state.date) || []).find(x => entryKey(x) === b.dataset.ate); if (!l) return;
@@ -1375,9 +1414,24 @@
     l.planned = v; persist();
     if (l.id) enqueue('update', { tab: 'Log', id: l.id, values: { Planned: v ? 'Yes' : 'No' } });
   }
-  function savePlan(settings) {
+  // Plan-card changes: This week = the current plan (as before); Next week onward = saved as the future plan.
+  // Future-plan fields equal to the current plan are dropped; nothing left = no future plan.
+  function savePlanScoped(settings) {
+    if (state.planScope === 'this') return savePlan(settings, 'Plan updated for this week');
+    const p = profile(), n = nextPlan(), set = { ...(n ? n.set : {}), ...settings };
+    const same = (x, y) => String(x ?? '') === String(y ?? '') || (!isNaN(Number(x || 0)) && !isNaN(Number(y || 0)) && Number(x || 0) === Number(y || 0));
+    for (const k of Object.keys(set)) if (same(set[k], p[k])) delete set[k];
+    const keep = Object.keys(set).length > 0;
+    savePlan({ 'Next plan': keep ? JSON.stringify({ from: nextWeekStart(), set }) : '' }, keep ? 'Saved for next week' : 'Next week matches your current plan');
+  }
+  function cancelNextPlan() {
+    const was = profile()['Next plan']; if (!nextPlan()) return;
+    savePlan({ 'Next plan': '' });
+    toast('Next week will use your current plan', 'Undo', () => savePlan({ 'Next plan': was }, 'Saved for next week'));
+  }
+  function savePlan(settings, msg) {
     Object.assign(state.data.profile, settings); persist();
-    enqueue('saveSettings', { settings }); syncBudgets(); render(); toast('Plan updated');
+    enqueue('saveSettings', { settings }); syncBudgets(); render(); toast(msg || 'Plan updated');
   }
   function act(a) {
     if (a === 'prev') state.date = addDays(state.date, -1);
@@ -1388,6 +1442,7 @@
     else if (a === 'addex') return openModal({ type: 'ex' });
     else if (a === 'copyday') return openModal({ type: 'copy' });
     else if (a === 'news') return openNews();
+    else if (a === 'cancelnext') return cancelNextPlan();
     else if (a === 'coachnotes') return openModal({ type: 'coach' });
     else if (a === 'haeurl') return copyText(haeUrl(), 'Health Auto Export URL');
     else if (a === 'refresh') { toast('Syncing…'); return refresh(); }
