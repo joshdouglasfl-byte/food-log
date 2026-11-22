@@ -2,6 +2,13 @@
  "entries": [
   {
    "date": "2026-11-22",
+   "version": "20261122190500",
+   "items": [
+    "Apple Watch workouts no longer double up with workouts already logged from Workout Buddy or your old Lose It! history"
+   ]
+  },
+  {
+   "date": "2026-11-22",
    "version": "20261122182500",
    "items": [
     "Sync now in Settings updates the Last sync time when it works, and tells you Synced (or why it didn't)",

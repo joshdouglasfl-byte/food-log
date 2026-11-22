@@ -249,33 +249,78 @@ const HAE_ACTIVITY = {
   'Elliptical': 'Elliptical', 'Outdoor Run': 'Run neighborhood', 'Outdoor Running': 'Run neighborhood', 'Running': 'Run neighborhood',
   'Core Training': 'Core Fusion', 'Bowling': 'Bowling', 'Fishing': 'Fishing'
 };
-/** Health Auto Export REST payload {data:{workouts:[...]}} -> Exercise rows (Source 'Apple Watch', id AW-<start>). Repeats are skipped. */
+// Watch workouts dated before this are never added: those days already came in from Lose It! history and Workout Buddy.
+const HAE_SINCE = { Josh: '2026-11-21' };
+/** Health Auto Export REST payload {data:{workouts:[...]}} -> Exercise rows (Source 'Apple Watch', id AW-<start>).
+ *  Skipped: repeats, zero-length entries other apps write, days before HAE_SINCE, and workouts already logged another way. */
 function haeWorkouts_(p) {
   if (p.person !== 'Josh' && p.person !== 'Michelle') return { ok: false, error: 'person must be Josh or Michelle' };
   const ws = (p.hae && p.hae.data && p.hae.data.workouts) || [];
   let added = 0, skipped = 0;
   const notes = [];
+  let others = null;   // read once, only when needed
   ws.forEach(w => {
     const start = haeDate_(w.start), end = haeDate_(w.end);
     const cal = Math.round(haeKcal_(w.activeEnergyBurned) || haeKcal_(w.activeEnergy) || 0);
     const raw = String(w.name || '').trim();
-    notes.push(`${raw} | ${w.start} | ${w.end} | ${w.duration} | ${cal}`);
-    if (!start || cal <= 0) { skipped++; return; }
+    const note = `${raw} | ${w.start} | ${w.end} | ${w.duration} | ${cal}`;
+    const skip = why => { skipped++; notes.push(note + ' | ' + why); };
+    if (!start || cal <= 0) return skip('no start or calories');
     // Lose It! (and similar apps) write logged exercise into Health as zero-length workouts at 23:59:59: not watch data
-    if (!end || end <= start) { skipped++; return; }
+    if (!end || end <= start) return skip('zero-length (another app)');
     const secs = Number(w.duration) || (end ? (end - start) / 1000 : 0);
+    const min = Math.max(1, Math.round(secs / 60));
     const local = haeLocal_(w.start, start);   // the workout's own local date/time (not the sheet's time zone)
+    if (HAE_SINCE[p.person] && local.date < HAE_SINCE[p.person]) return skip('before ' + HAE_SINCE[p.person]);
     // Josh keeps AW-<stamp>; anyone else gets a -<initial> suffix so two people starting in the same minute don't collide
     const id = 'AW-' + local.stamp + (p.person === 'Josh' ? '' : '-' + p.person.charAt(0));
     const name = HAE_ACTIVITY[raw] || raw || 'Workout';
-    if (findRowById_(TABS.exercise, 'EntryID', id)) { skipped++; return; }
-    if (p.person !== 'Josh' && haeLegacyRow_(p.person, 'AW-' + local.stamp)) { skipped++; return; }   // added before 2026-11-22 without the suffix
-    addExercise_({ person: p.person, entry: { id, date: local.date, name,
-      min: Math.max(1, Math.round(secs / 60)), cal, source: 'Apple Watch' } });
+    if (findRowById_(TABS.exercise, 'EntryID', id)) return skip('already added');
+    if (p.person !== 'Josh' && haeLegacyRow_(p.person, 'AW-' + local.stamp)) return skip('already added (old id)');   // added before 2026-11-22 without the suffix
+    if (!others) others = haeOtherRows_(p.person);
+    const dup = haeMatch_(others, local.date, name, min, cal);
+    if (dup) { dup.used = true; return skip('already logged as ' + dup.id); }
+    addExercise_({ person: p.person, entry: { id, date: local.date, name, min, cal, source: 'Apple Watch' } });
+    notes.push(note + ' | added');
     added++;
   });
   haeLog_(p.person, ws.length, added, notes);
   return { ok: true, received: ws.length, added, skipped };
+}
+// Done exercise this person logged some other way (Workout Buddy, Lose It! history, typed in): not watch rows, not planned rows
+function haeOtherRows_(person) {
+  const s = sh_(TABS.exercise); if (s.getLastRow() < 2) return [];
+  const h = gHeader_(s), v = s.getRange(2, 1, s.getLastRow() - 1, h.length).getValues();
+  const ix = k => h.indexOf(k);
+  const iD = ix('Date'), iP = ix('Person'), iA = ix('Activity'), iM = ix('Minutes'), iC = ix('Calories'), iS = ix('Source'), iE = ix('EntryID'), iPl = ix('Planned');
+  const today = Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd');
+  return v.filter(r => r[iP] === person).map(r => {
+    const src = String(r[iS] || ''), pl = iPl < 0 ? '' : String(r[iPl] || ''), date = ymd_(r[iD]);
+    const planned = pl === 'Yes' || (pl === '' && (date > today || /plan/i.test(src)));
+    return { date, key: haeKey_(r[iA], src), min: num_(r[iM]), cal: num_(r[iC]), id: String(r[iE] || ''), skip: src === 'Apple Watch' || planned };
+  }).filter(o => !o.skip && o.cal);
+}
+// Activities that count as the same thing (Workout Buddy sessions are lifting; golf variants are golf)
+function haeKey_(activity, source) {
+  const a = String(activity || '').toLowerCase();
+  if (source === 'Workout Buddy' || /weight|strength|lift/.test(a)) return 'lift';
+  if (/golf/.test(a) && !/range/.test(a)) return 'golf';
+  if (/cycl|bik/.test(a)) return 'bike';
+  if (/walk/.test(a)) return 'walk';
+  if (/run/.test(a)) return 'run';
+  return a;
+}
+// One existing row per watch workout: same day, same activity, calories within 10% (at least 10), minutes within 20% (at least 5)
+function haeMatch_(others, date, name, min, cal) {
+  const key = haeKey_(name, ''); let best = null, bestD = 1e9;
+  others.forEach(o => {
+    if (o.used || o.date !== date || o.key !== key) return;
+    const dc = Math.abs(o.cal - cal);
+    if (dc > Math.max(10, cal * 0.1)) return;
+    if (o.min && Math.abs(o.min - min) > Math.max(5, min * 0.2)) return;
+    if (dc < bestD) { best = o; bestD = dc; }
+  });
+  return best;
 }
 // true when this person already has a row with the old (unsuffixed) id
 function haeLegacyRow_(person, id) {
