@@ -2,8 +2,9 @@
  "entries": [
   {
    "date": "2026-11-21",
-   "version": "20261121191200",
+   "version": "20261121192000",
    "items": [
+    "New Macro goals card on the Plan tab: set daily grams for protein, carbs, fat and fiber. Today's banner shows your progress on each: protein and fiber turn green once you reach them, carbs and fat turn red if you go over",
     "Today's banner now shows Protein, Carbs, Fat and Fiber. Tap one to see its grams next to each food and each meal; foods missing that number show an orange dash. Tap again to hide",
     "Search results show \"Your foods\" first, then a blue USDA box for foods you haven't added yet",
     "Adding food is steadier on the phone: the search box no longer jumps while you type, and autocorrect is off in it",

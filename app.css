@@ -267,3 +267,23 @@ input[type=search] { -webkit-appearance: none; appearance: none; } input[type=se
 .usda-list { border: 2px solid var(--blue); border-top: 0; border-radius: 0 0 12px 12px; background: rgba(59,110,168,.07); padding: 0 8px; margin-bottom: 8px; }
 .usda-list .pick:last-child { border-bottom: 0; }
 .pick .usda-add { flex: 0 0 auto; width: 26px; height: 26px; border-radius: 50%; background: var(--blue); color: #fff; display: grid; place-items: center; font-weight: 700; line-height: 1; }
+
+.mac small { font-weight: 500; font-size: .75rem; color: var(--muted); }
+.mac.on small { color: #e6efe9; }
+.mac-bar { display: block; width: 100%; height: 4px; border-radius: 2px; background: var(--line); margin-top: 4px; overflow: hidden; }
+.mac-bar i { display: block; height: 100%; background: var(--green-2); }
+.mac.met .mac-bar i { background: var(--green); }
+.mac.met b { color: var(--green); }
+.mac.over .mac-bar i { background: var(--over); }
+.mac.over b { color: var(--over); }
+.mac.on.met b, .mac.on.over b { color: #fff; }
+.mac.on .mac-bar { background: rgba(255,255,255,.3); }
+.mac.on .mac-bar i { background: #fff; }
+.macgoals { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+@media (min-width: 700px) { .macgoals { grid-template-columns: repeat(4, 1fr); } }
+.macros:has(.mac) { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.mac { min-width: 0; padding: 6px 4px; }
+.macgoals .field { min-width: 0; }
+.macgoals .field input { width: 100%; min-width: 0; }
+.mac b { white-space: nowrap; font-size: .9rem; }
+.mac small { font-size: .7rem; }

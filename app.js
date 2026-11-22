@@ -419,7 +419,7 @@
       <div><b>${fmt(x.burned)}</b><span>Exercise</span></div><div class="left ${over ? 'over' : ''}"><b>${fmt(Math.abs(x.left))}</b><span>${over ? 'Over' : 'Left'}</span></div></div>`;
     let h = coachCard() + `<section class="card">${summary}
       <div class="bar"><div class="fill ${over ? 'over' : ''}" style="width:${pct}%"></div>${x.burned ? `<div class="mark" style="left:${markPct}%"></div>` : ''}</div>
-      <div class="macros">${MACROS.map(([k, lb]) => `<button class="mac ${state.macro === k ? 'on' : ''}" data-macro="${k}">${lb} <b>${r0(x[k])} g</b></button>`).join('')}</div>
+      <div class="macros">${MACROS.map(([k, lb]) => macroChip(k, lb, x[k])).join('')}</div>
       ${state.macro ? `<div class="mac-hint">Showing ${macroName()} for each food · ${x.log.filter(l => l[state.macro] == null).length ? `<span class="mac-miss">${x.log.filter(l => l[state.macro] == null).length} missing</span>` : 'none missing'} · tap again to hide</div>` : ''}
       <div class="macros">${x.log.some(isPlanned) ? `<span>🕒 ${fmt(x.log.filter(isPlanned).reduce((a, l) => a + l.cal, 0))} planned</span>` : ''}</div></section>`;
     for (const slot of visibleSlots()) {
@@ -452,6 +452,20 @@
     return h;
   }
   const MACROS = [['pro', 'Protein'], ['carb', 'Carbs'], ['fat', 'Fat'], ['fib', 'Fiber']];
+  // Protein and fiber are "reach at least" goals; carbs and fat are "stay under" limits
+  const MACRO_MIN = { pro: true, fib: true };
+  const macroGoal = k => { const v = Number(profile()[`${MACROS.find(m => m[0] === k)[1]} goal (g)`]); return v > 0 ? v : null; };
+  function macroChip(k, lb, v) {
+    const g = macroGoal(k), pct = g ? Math.min(100, v / g * 100) : 0;
+    const st = !g ? '' : MACRO_MIN[k] ? (v >= g ? 'met' : '') : (v > g ? 'over' : '');
+    return `<button class="mac ${state.macro === k ? 'on' : ''} ${st}" data-macro="${k}">${lb}<b>${r0(v)}${g ? `<small> / ${r0(g)}</small>` : ''} g</b>${g ? `<i class="mac-bar"><i style="width:${pct}%"></i></i>` : ''}</button>`;
+  }
+  function macroGoalsCard() {
+    const p = profile();
+    return `<section class="card"><h2>Macro goals<small>grams per day</small></h2>
+      <div class="macgoals">${MACROS.map(([k, lb]) => `<div class="field"><label>${lb}</label><input data-macgoal="${lb} goal (g)" type="number" inputmode="numeric" min="0" step="1" value="${Number(p[`${lb} goal (g)`]) > 0 ? Number(p[`${lb} goal (g)`]) : ''}" placeholder="none"></div>`).join('')}</div>
+      <div class="sub" style="margin:0;text-align:left">Protein and fiber turn green once you reach them; carbs and fat turn orange if you go over. Leave blank for no goal.</div></section>`;
+  }
   const macroName = () => (MACROS.find(m => m[0] === state.macro) || [, ''])[1].toLowerCase();
   // Selected macro under each food's calories; blank values flagged so missing macros stand out
   const macroCell = l => !state.macro ? '' : l[state.macro] == null
@@ -639,7 +653,7 @@
   }
   function settingsView() {
     const rw = rewards(), vs = visibleSlots();
-    return planCard() + progressCard() + `<section class="card"><h2>Level ${rw.level}<small>${fmt(rw.xp)} XP</small></h2>
+    return planCard() + progressCard() + macroGoalsCard() + `<section class="card"><h2>Level ${rw.level}<small>${fmt(rw.xp)} XP</small></h2>
       <div class="level"><div class="ring" style="--p:${rw.pct}"><span>${rw.level}</span></div>
       <div>${fmt(rw.toNext)} XP to level ${rw.level + 1}<br><small style="color:var(--muted)">Streak ${rw.st} days · best ${rw.best}</small></div></div></section>
       <section class="card"><h2>Badges</h2><div class="badges">${rw.badges.map(([e, n, got]) => `<div class="badge ${got ? 'got' : ''}"><span class="e">${e}</span>${esc(n)}</div>`).join('')}</div>
@@ -1213,6 +1227,7 @@
     document.querySelectorAll('[data-poff]').forEach(b => b.onclick = () => { state.progOff = Math.min(0, (state.progOff || 0) + Number(b.dataset.poff)); render(); });
     const PK = () => PROG_KEYS[load('progMetric', 'fat')];
     const fg = $('#fgoal'); if (fg) fg.onchange = () => savePlan({ [PK().goal]: fg.value === '' ? '' : Number(fg.value) });
+    document.querySelectorAll('[data-macgoal]').forEach(inp => inp.onchange = () => { const v = Math.round(Number(inp.value)); savePlan({ [inp.dataset.macgoal]: v > 0 ? v : '' }); });
     const fd = $('#fdate'); if (fd) fd.onchange = () => savePlan({ [PK().date]: fd.value });
     document.querySelectorAll('[data-pmetric]').forEach(b => b.onclick = () => { save('progMetric', b.dataset.pmetric); render(); });
     document.querySelectorAll('[data-m-open=sched]').forEach(b => b.onclick = () => { const sc = schedule(profile()); openModal({ type: 'sched', high: [...sc.high], extra: sc.extra || 150 }); });

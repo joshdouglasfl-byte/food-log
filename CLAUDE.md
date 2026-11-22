@@ -78,4 +78,4 @@ Done: phases 1-2, plan view (Mifflin-St Jeor x1.2 + manual adjustment + weekly g
 - Search input: type=search, enterkeyhint=search, autocorrect/autocapitalize/spellcheck off. iOS's form bar (up/down/✓ above the keyboard) can't be hidden from a web page.
 
 ## Macro banner (2026-11-21)
-- Today banner: Protein / Carbs / Fat / Fiber chips (`MACROS`, `state.macro`, not persisted). Tapping one shows that macro per entry (`macroCell`, blank = orange "— g") and per meal header; tap again clears. No macro goals yet (Josh: totals only for now).
+- Today banner: Protein / Carbs / Fat / Fiber chips (`MACROS`, `state.macro`, not persisted). Tapping one shows that macro per entry (`macroCell`, blank = orange "— g") and per meal header; tap again clears. Macro goals (added same evening): Profiles S:V , , ,  (blank = none), edited in Plan > Macro goals card via saveSettings. Chips show  + bar; protein/fiber = minimum (green when met), carbs/fat = limit (red when over).
