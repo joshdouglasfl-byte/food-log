@@ -290,3 +290,38 @@ input[type=search] { -webkit-appearance: none; appearance: none; } input[type=se
 /* two fields side by side (e.g. goal + target date): let inputs shrink so iOS date boxes don't spill past the card */
 .qty-row .field { min-width: 0; }
 .qty-row .field input { width: 100%; min-width: 0; -webkit-appearance: none; appearance: none; }
+
+/* 🪄 Meal Wizard */
+.wz-cal { display: flex; align-items: baseline; justify-content: space-between; margin-top: 4px; }
+.wz-cal b { font-size: 1.25rem; font-variant-numeric: tabular-nums; }
+.wz-cal b small { color: var(--muted); font-weight: 500; font-size: .85rem; }
+.wz-cal.met b { color: var(--green); } .wz-cal.over b { color: var(--over); } .wz-cal.off { opacity: .55; }
+.wz-lbl { display: flex; align-items: center; gap: 8px; font-weight: 650; }
+.wz-chk { width: 20px; height: 20px; accent-color: var(--green); margin: 0; flex: 0 0 auto; }
+.wz-budget { font-size: .8rem; color: var(--muted); margin: -4px 0 8px; }
+.mac.wz { position: relative; cursor: pointer; padding-top: 24px; min-width: 70px; }
+.mac.wz .wz-chk { position: absolute; top: 5px; left: 50%; transform: translateX(-50%); width: 17px; height: 17px; }
+.mac.wz.off { opacity: .5; } .mac.wz.off.met b { color: var(--ink); } .mac.wz.off.over b { color: var(--ink); }
+.wz-nogoal { font-size: .7rem; }
+.wz-status { text-align: center; font-size: .9rem; font-weight: 650; margin-top: 10px; color: var(--muted); }
+.wz-status.ok { color: var(--green); } .wz-status.bad { color: var(--over); }
+.wz-tol { display: block; margin: 4px auto 0; }
+.wz-item .wz-pin, .wz-item .wz-x { flex: 0 0 auto; width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; font-size: 1rem; }
+.wz-item .wz-pin { filter: grayscale(1); opacity: .35; }
+.wz-item .wz-pin.on { filter: none; opacity: 1; background: #f3ead6; }
+.wz-x { color: var(--muted); }
+.wz-x.confirm { width: auto !important; padding: 0 8px; color: #fff; background: var(--over); font-size: .8rem; font-weight: 700; border-radius: 10px; }
+.wz-item.kept .nm div { font-weight: 600; }
+.wz-tag { color: var(--blue); font-weight: 600; }
+.wz-sug { background: #fbf6ea; border: 1.5px dashed var(--gold); border-radius: 12px; padding: 8px 10px; margin: 4px 0; }
+.wz-keep { padding: 8px 12px; }
+.wz-actions { margin: 4px 0 12px; }
+.wz-actions .wz-wand { font-size: 1.1rem; }
+.wz-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 10px 0 6px; }
+.wz-row .btn { padding: 12px 6px; font-size: .9rem; }
+.wz-por { display: flex; flex-wrap: wrap; gap: 8px; }
+.wz-por .btn { padding: 9px 12px; font-size: .9rem; }
+.wz-dates { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.wz-warn { color: var(--gold); font-weight: 600; text-align: left; }
+nav.tabs button { min-width: 58px; }
+.wz-sug .nm div { white-space: normal; }

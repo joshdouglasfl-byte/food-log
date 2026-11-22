@@ -100,7 +100,7 @@
         j.log.forEach(l => { if (planned.has(l.id)) l.planned = planned.get(l.id); });
         const exFlags = new Map((prev.exercise || []).filter(e => e.id).map(e => [e.id, e]));
         j.exercise.forEach(e => { const o = exFlags.get(e.id); if (o) { if (o.planned !== undefined) e.planned = o.planned; if (o.est) e.est = true; } });
-        j.exLib = prev.exLib;
+        j.exLib = prev.exLib; j.dayPlans = prev.dayPlans;
         state.data = j; persist(); state.error = ''; syncBudgets(); if (!state.modal) render(); else renderSync();
       } // don't overwrite unsynced local changes
       loadPlanned(); loadExFlags(); loadExLib(); loadBody(); loadServings(); loadCoach();
@@ -382,7 +382,7 @@
     if (!state.data) { $('#app').innerHTML = `<div class="wrap" style="padding-top:40px"><div class="card">${state.error ? 'Couldn’t load: ' + esc(state.error) + (state.error === 'unauthorized' ? '<div class="field" style="margin-top:12px"><label>Access key</label><input id="keyin" autocomplete="off" autocapitalize="off"></div><button class="btn big" id="keysave">Save key</button>' : '<br><br><button class="btn" onclick="location.reload()">Try again</button>') : 'Loading your log…'}</div></div>`; const ks = $('#keysave'); if (ks) ks.onclick = () => { save('key', ($('#keyin').value || '').trim()); location.reload(); };
       return; }
     const v = state.view;
-    $('#app').innerHTML = header() + `<main class="wrap">${v === 'day' ? dayView() : v === 'week' ? weekView() : v === 'prefs' ? prefsView() : settingsView()}</main>` + nav();
+    $('#app').innerHTML = header() + `<main class="wrap">${v === 'day' ? dayView() : v === 'week' ? weekView() : v === 'prefs' ? prefsView() : v === 'wiz' ? wizView() : settingsView()}</main>` + nav();
     renderSync(); bind();
     if (state.modal) renderModal();
   }
@@ -395,6 +395,7 @@
     if (state.view === 'week') return `<header class="top"><div class="top-row">
       <button class="icon-btn" data-act="wprev">‹</button><h1>Week of ${esc(parse(weekStart(state.weekOf)).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }))}</h1>
       <button class="icon-btn" data-act="wnext">›</button></div><div class="sync" id="sync"></div></header>`;
+    if (state.view === 'wiz') return `<header class="top"><div class="top-row"><h1>🪄 Meal Wizard</h1></div><div class="sync" id="sync"></div></header>`;
     return `<header class="top"><div class="top-row"><h1>${state.view === 'prefs' ? 'Settings' : `${esc(PERSON)}’s plan`}</h1></div><div class="sync" id="sync"></div></header>`;
   }
   function renderSync() {
@@ -405,7 +406,7 @@
   }
   function nav() {
     const b = (v, i, t) => `<button class="${state.view === v ? 'on' : ''}" data-view="${v}"><span class="i">${i}</span>${t}</button>`;
-    return `<nav class="tabs">${b('day', '📅', 'Today')}${b('week', '📊', 'Week')}${b('settings', '🎯', 'Plan')}${b('prefs', newsUnread() ? '⚙️<i class="news-dot tab-dot"></i>' : '⚙️', 'Settings')}</nav>`;
+    return `<nav class="tabs">${b('day', '📅', 'Today')}${b('week', '📊', 'Week')}${b('settings', '🎯', 'Plan')}${b('prefs', newsUnread() ? '⚙️<i class="news-dot tab-dot"></i>' : '⚙️', 'Settings')}${b('wiz', '🪄', 'Wizard')}</nav>`;
   }
 
   function dayView() {
@@ -725,7 +726,8 @@
       o.addEventListener('click', e => { if (e.target === o) closeModal(); }); }
     const m = state.modal;
     const body = m.type === 'add' ? addSheet(m) : m.type === 'food' ? foodSheet(m) : m.type === 'entry' ? entrySheet(m)
-      : m.type === 'quick' ? quickSheet(m) : m.type === 'ex' ? exSheet(m) : m.type === 'meal' ? mealSheet(m) : m.type === 'tell' ? tellSheet(m) : m.type === 'scan' ? scanSheet(m) : m.type === 'sched' ? schedSheet(m) : m.type === 'savemeal' ? saveMealSheet(m) : m.type === 'copy' ? copySheet(m) : m.type === 'news' ? newsSheet(m) : m.type === 'coach' ? coachSheet(m) : '';
+      : m.type === 'quick' ? quickSheet(m) : m.type === 'ex' ? exSheet(m) : m.type === 'meal' ? mealSheet(m) : m.type === 'tell' ? tellSheet(m) : m.type === 'scan' ? scanSheet(m) : m.type === 'sched' ? schedSheet(m) : m.type === 'savemeal' ? saveMealSheet(m) : m.type === 'copy' ? copySheet(m) : m.type === 'news' ? newsSheet(m) : m.type === 'coach' ? coachSheet(m)
+      : m.type === 'wzswap' ? wzSwapSheet(m) : m.type === 'wzpull' ? wzPullSheet(m) : m.type === 'wzapply' ? wzApplySheet(m) : m.type === 'wzsave' ? wzSaveSheet(m) : m.type === 'wzplans' ? wzPlansSheet(m) : m.type === 'wztol' ? wzTolSheet(m) : '';
     // While searching, swap only the results so the search box (and the iPhone keyboard) stay put
     if (m.type === 'add' && o._m === m && o._tab === m.tab && o._slot === m.slot && $('#addres') && $('#q')) {
       const tmp = document.createElement('div'); tmp.innerHTML = body;
@@ -743,7 +745,7 @@
   const head = (title, back) => `<div class="sheet-head">${back ? '<button class="icon-btn" data-m="back">‹</button>' : ''}<h3>${esc(title)}</h3><button class="icon-btn" data-m="close">✕</button></div>`;
 
   // The meal comes from the "+ Add food" button that was tapped, so the sheet just names it
-  const addTitle = m => `Add to ${m.slot || defaultSlot()}${state.date === today() ? '' : ' · ' + dayLabel(state.date)}`;
+  const addTitle = m => wizOf(m) ? `Add to ${m.slot} · plan` : `Add to ${m.slot || defaultSlot()}${state.date === today() ? '' : ' · ' + dayLabel(state.date)}`;
   function addSheet(m) {
     const seg = `<div class="seg">${[['foods', 'My foods'], ['meals', 'Meals'], ['quick', 'Quick entry']].map(([k, t]) => `<button class="${m.tab === k ? 'on' : ''}" data-tab="${k}">${t}</button>`).join('')}</div>`;
     let list = '';
@@ -959,7 +961,7 @@
     return `<div class="qty-row"><div class="field" style="flex:1"><label id="lxmin">${exLabel('Minutes', m.estField === 'min')}</label><input id="xmin" type="number" inputmode="numeric" value="${esc(m.min ?? '')}"></div>
       <div class="field" style="flex:1"><label id="lxcal">${exLabel('Calories', m.estField === 'cal')}</label><input id="xcal" type="number" inputmode="numeric" value="${esc(m.cal ?? '')}"></div></div>
       ${exRateLine(m)}
-      ${entry ? '' : `<div class="toggle-row" style="border-top:0"><span>🕒 Planned${future ? '' : ' (not done yet)'}</span><button class="switch ${m.planned ? 'on' : ''}" data-m="xplan"></button></div>`}`;
+      ${entry || wizOf(m) ? '' : `<div class="toggle-row" style="border-top:0"><span>🕒 Planned${future ? '' : ' (not done yet)'}</span><button class="switch ${m.planned ? 'on' : ''}" data-m="xplan"></button></div>`}`;
   }
   function exSheet(m) {
     if (m.entry) {
@@ -972,7 +974,7 @@
         ${exForm(m, true)}
         <button class="btn big" data-m="exupd">Save</button><button class="danger" data-m="exdel">Delete exercise</button></div>`;
     }
-    if (m.name) return head(m.name, true) + `<div class="sheet-body">${exForm(m, false)}<button class="btn big" data-m="exsave">Add to ${esc(dayLabel(state.date))}</button></div>`;
+    if (m.name) return head(m.name, true) + `<div class="sheet-body">${exForm(m, false)}<button class="btn big" data-m="exsave">${wizOf(m) ? 'Add to plan' : `Add to ${esc(dayLabel(state.date))}`}</button></div>`;
     const q = String(m.q || '').trim().toLowerCase(), all = exChoices();
     const list = all.filter(x => !q || x.name.toLowerCase().includes(q));
     const exact = q && all.some(x => x.name.toLowerCase() === q);
@@ -1208,7 +1210,8 @@
   }
 
   function bind() {
-    document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => { state.view = b.dataset.view; if (state.view === 'day') state.date = today(); if (state.view === 'week') state.weekOf = state.date; render(); scrollTo(0, 0); });
+    document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => { state.view = b.dataset.view; if (state.view === 'day') state.date = today(); if (state.view === 'week') state.weekOf = state.date; if (state.view === 'wiz') loadDayPlans(); render(); scrollTo(0, 0); });
+    if (state.view === 'wiz') bindWiz();
     document.querySelectorAll('[data-act]').forEach(b => b.onclick = () => act(b.dataset.act));
     document.querySelectorAll('[data-macro]').forEach(b => b.onclick = () => { state.macro = state.macro === b.dataset.macro ? null : b.dataset.macro; render(); });
     document.querySelectorAll('[data-addslot]').forEach(b => b.onclick = () => openModal({ type: 'add', slot: b.dataset.addslot, tab: 'foods' }));
@@ -1304,6 +1307,7 @@
   function bindModal() {
     const m = state.modal; if (!m) return;
     document.querySelectorAll('[data-m]').forEach(b => b.onclick = () => modalAct(b.dataset.m));
+    bindWizModal(m);
     document.querySelectorAll('[data-dow]').forEach(b => b.onclick = () => { const d = b.dataset.dow; m.high = m.high || []; m.high = m.high.includes(d) ? m.high.filter(x => x !== d) : [...m.high, d]; renderModal(); });
     document.querySelectorAll('[data-xtra]').forEach(b => b.onclick = () => { m.extra = Number(b.dataset.xtra); renderModal(); });
     const xi = $('#xtra'); if (xi) xi.onchange = () => { if (Number(xi.value) > 0) { m.extra = Number(xi.value); renderModal(); } };
@@ -1405,11 +1409,13 @@
     const m = state.modal;
     if (a === 'close') return closeModal();
     if (a === 'back') { stopScan(); state.modal = m.back; return renderModal(); }
+    if (a.startsWith('wz')) return wzModalAct(a, m);
     if (a === 'foodsave') {
       const f = I().foodById.get(m.food), qty = Number($('#fqty').value);
       if (!(qty > 0)) return toast('Enter an amount');
       // read the unit before closing: closeModal removes the sheet, and a missing select fell back to the food's base unit (2 servings -> 2 g)
       const unit = $('#funit') ? $('#funit').value : (m.unit || f.unit);
+      if (wizOf(m)) { closeModal(); return wzAddEntries([entryFromFood(f, qty, m.slot, unit)], m.slot); }
       closeModal(); return addEntries([entryFromFood(f, qty, m.slot, unit)]);
     }
     if (a === 'mealsave') {
@@ -1418,6 +1424,10 @@
         const f = x.food && I().foodById.get(x.food);
         return f ? entryFromFood(f, x.qty, m.slot, x.unit) : { food: '', meal: m.slot, name: x.name, qty: x.qty, unit: x.unit, cal: x.cal, pro: x.pro ?? null, fib: x.fib ?? null, carb: x.carb ?? null, fat: x.fat ?? null, est: !!x.est };
       });
+      if (wizOf(m)) {   // a whole saved meal stays one item in the plan
+        if (m.group.id && !off.length) { const w = wiz(); w.items.push(wzMealItem(m.group, m.slot, 'manual')); wzSave(); closeModal(); return toast(`Added to ${m.slot} in the plan`); }
+        closeModal(); return wzAddEntries(es, m.slot);
+      }
       closeModal(); return addEntries(es);
     }
     if (a === 'mealsavenew') {
@@ -1452,6 +1462,7 @@
         f = { id: uid('tmp'), tempId: '', name, brand: '', unit: 'Serving', per: 1, cal, pro: null, fib: null, carb: null, fat: null, barcode: '', source: 'Quick entry', est };
         f.tempId = f.id; state.data.foods.push(f); enqueue('addFood', { food: { ...f } }); persist();
       }
+      if (wizOf(m)) { closeModal(); return wzAddEntries([entryFromFood(f, 1, m.slot, 'Serving')], m.slot); }
       closeModal(); return addEntries([entryFromFood(f, 1, m.slot || defaultSlot(), 'Serving')]);
     }
     if (a === 'entrysave') {
@@ -1472,6 +1483,7 @@
       const name = String(m.name || '').trim(), cal = Number(m.cal), min = Number(m.min) || null;
       if (!name || !(cal > 0)) return toast('Enter minutes or calories');
       const est = !!m.estField;
+      if (wizOf(m)) { const w = wiz(); w.ex.push({ key: uid('x'), kind: 'manual', name, min, cal, est }); wzSave(); closeModal(); return toast(`${name} added to the plan`); }
       const e = { id: uid('X'), date: state.date, name, min, cal, source: 'Manual', est, planned: !!m.planned };
       state.data.exercise.push(e); ensureLocalDay(state.date); persist();
       enqueue('addExercise', { entry: e, budget: budgetFor(state.date) });
@@ -1516,6 +1528,468 @@
     }
   }
 
+
+  // ---------- 🪄 Meal Wizard ----------
+  // Builds a day's plan from the person's own foods (logged in the last 180 days) to hit the calorie and macro targets.
+  // Runs entirely in the browser (instant, offline). Plan items look like Log entries plus:
+  //   key, kind ('wand' = the wand's pick, 'manual' = + Add or a loaded plan, 'pulled' = Pull in day), locked (wand keeps it),
+  //   sub (a saved meal: one item holding its entries), src/srcDate (pulled from an existing row, so Apply never doubles it).
+  // Saved day plans live in the 'Day Plans' tab (generic append/update/delete; see CLAUDE.md for the format).
+  const WZ_DAYS = 180, WZ_CAP = 3;
+  const WZ_PLAN_HEADERS = ['PlanID', 'Person', 'Name', 'Items (JSON)', 'Exercise (JSON)', 'Calories', 'Protein (g)', 'Carbs (g)', 'Fat (g)', 'Fiber (g)', 'Updated', 'Notes'];
+  function wiz() {
+    if (!state.wiz) state.wiz = load('wiz', null);
+    let w = state.wiz;
+    if (!w || !Array.isArray(w.items)) w = state.wiz = { date: today(), items: [], ex: [], noEx: true, chk: {}, tol: { cal: 50, g: 10 } };
+    if (!w.chk) w.chk = {}; if (!w.tol) w.tol = { cal: 50, g: 10 }; if (!w.ex) w.ex = [];
+    if (w.date < today()) w.date = today();
+    return w;
+  }
+  const wzSave = () => save('wiz', state.wiz);
+  const wzOn = (w, k) => (w.chk[k] ?? true) && (k === 'cal' || macroGoal(k) != null);
+  const wzIds = it => it.sub ? it.sub.map(x => x.food || x.name) : [it.food || it.name];
+  const wizOf = m => { for (let x = m, n = 0; x && n < 8; x = x.back, n++) if (x.wiz) return true; return false; };
+  const wzDay = d => parse(d).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  function wzTargets(w, extraEx = 0) {
+    const budget = budgetFor(w.date), exCal = w.ex.reduce((a, e) => a + (Number(e.cal) || 0), 0) + extraEx;
+    const t = { budget, exCal, cal: budget + exCal };
+    MACROS.forEach(([k]) => { t[k] = macroGoal(k); });
+    return t;
+  }
+  function wzTotals(items) {
+    const T = { cal: 0, pro: 0, carb: 0, fat: 0, fib: 0 };
+    for (const it of items) { T.cal += Number(it.cal) || 0; for (const k of ['pro', 'carb', 'fat', 'fib']) T[k] += Number(it[k]) || 0; }
+    return T;
+  }
+  // penalty past the "close enough" tolerance, and what's off; ok = every checked target met
+  function wzEval(T, tg, w) {
+    let pen = 0; const miss = [];
+    const tc = Number(w.tol.cal) || 0, tm = Number(w.tol.g) || 0;
+    if (wzOn(w, 'cal')) {
+      const d = T.cal - tg.cal;
+      if (Math.abs(d) > tc) { pen += (Math.abs(d) - tc) / 50; miss.push(`Calories ${fmt(Math.abs(d))} ${d > 0 ? 'over' : 'under'}`); }
+      pen += Math.abs(d) / 3000;   // inside the tolerance, closer is still a little better
+    }
+    for (const [k, lb] of MACROS) {
+      if (!wzOn(w, k)) continue;
+      const g = tg[k];
+      if (MACRO_MIN[k]) { const s = g - T[k]; if (s > tm) { pen += (s - tm) / 10; miss.push(`${lb} ${r0(s)} g short`); } }
+      else { const o = T[k] - g; if (o > tm) { pen += (o - tm) / 10; miss.push(`${lb} ${r0(o)} g over`); } }
+    }
+    return { pen, miss, ok: !miss.length };
+  }
+  // an amount he has logged, in sensible steps: servings when the food has one, else rounded grams; other units in quarters
+  function wzPortion(f, qty, unit) {
+    qty = Number(qty); if (!(qty > 0)) return null;
+    const fam = familyOf(unit);
+    if (fam && fam.name === 'weight') {
+      const g = qty * fam.map[fam.unit], sv = servingOf(f, 'Serving') || servingsFor(f).find(x => !familyOf(x.unit));
+      if (sv && sv.grams > 0) return { qty: Math.max(0.5, Math.round(g / sv.grams * 2) / 2), unit: sv.unit };
+      const step = g < 100 ? 5 : 10; return { qty: Math.max(step, Math.round(g / step) * step), unit: 'Gram' };
+    }
+    const sv = servingOf(f, unit);
+    return { qty: Math.max(0.25, Math.round(qty * 4) / 4), unit: sv ? sv.unit : canonUnit(unit) };
+  }
+  // what he's eaten in the last 180 days: foods per slot with the amounts he had, saved meals, slot habits, activities
+  let wzCache = null;
+  function wzCands() {
+    const d = state.data, key = [d.log.length, d.foods.length, (d.meals || []).length, d.exercise.length, (d.servings || []).length, today()].join('|');
+    if (wzCache && wzCache.key === key) return wzCache;
+    const t = today(), from = addDays(t, -WZ_DAYS), F = I().foodById;
+    const foods = new Map(), groups = new Map(), days = new Set();
+    for (const l of d.log) {
+      if (l.date < from || l.date > t || isPlanned(l)) continue;
+      days.add(l.date);
+      const gk = l.date + '|' + l.meal; if (!groups.has(gk)) groups.set(gk, []); groups.get(gk).push(l);
+      const f = l.food && F.get(l.food); if (!f || !(f.cal > 0)) continue;
+      let c = foods.get(f.id); if (!c) foods.set(f.id, c = { f, n: 0, slots: new Map(), por: new Map() });
+      c.n++; c.slots.set(l.meal, (c.slots.get(l.meal) || 0) + 1);
+      const p = wzPortion(f, l.qty, l.unit); if (!p) continue;
+      const pk = p.qty + '|' + p.unit, o = c.por.get(pk); if (o) o.n++; else c.por.set(pk, { ...p, n: 1 });
+    }
+    const slotUse = new Map(), slotSizes = new Map();
+    for (const [gk, its] of groups) {
+      const s = gk.split('|')[1]; slotUse.set(s, (slotUse.get(s) || 0) + 1);
+      if (!slotSizes.has(s)) slotSizes.set(s, []); slotSizes.get(s).push(Math.min(WZ_CAP, its.length));
+    }
+    const nd = Math.max(1, days.size); for (const [s, v] of slotUse) slotUse.set(s, Math.min(1, v / nd));
+    const meals = [];
+    for (const g of savedMeals()) {
+      const sig = mealSig(g.items), slots = new Map(); let n = 0;
+      for (const [gk, its] of groups) if (mealSig(its) === sig) { const s = gk.split('|')[1]; slots.set(s, (slots.get(s) || 0) + 1); n++; }
+      if (n) meals.push({ meal: g, n, slots });
+    }
+    const list = [...foods.values()].map(c => ({ ...c, por: [...c.por.values()].sort((a, b) => b.n - a.n).slice(0, 4) })).filter(c => c.por.length);
+    const exm = new Map();
+    for (const e of d.exercise) {
+      if (e.date < from || e.date > t || isPlannedEx(e) || !(e.cal > 0)) continue;
+      const k = String(e.name || '').trim(); if (!k) continue;
+      if (!exm.has(k)) exm.set(k, []); exm.get(k).push(e);
+    }
+    const med = a => { const s = a.slice().sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
+    const acts = [...exm.entries()].map(([name, es]) => {
+      const mins = es.filter(e => e.min > 0).map(e => e.min);
+      return { name, n: es.length, min: mins.length ? Math.max(5, Math.round(med(mins) / 5) * 5) : null, cal: Math.round(med(es.map(e => e.cal)) / 10) * 10 };
+    }).filter(a => a.cal >= 50).sort((a, b) => b.n - a.n).slice(0, 5);
+    return (wzCache = { key, foods: list, byId: new Map(list.map(c => [c.f.id, c])), meals, slotUse, slotSizes, acts });
+  }
+  const wzSkip = (it, w) => MACROS.some(([k]) => wzOn(w, k) && it[k] == null);
+  function wzFoodItem(c, p, slot) { return { ...entryFromFood(c.f, p.qty, slot, p.unit), key: uid('w'), kind: 'wand', locked: false }; }
+  function wzGroup(g) {
+    const s = k => g.sub.some(x => x[k] == null) ? null : Math.round(g.sub.reduce((a, x) => a + Number(x[k]), 0) * 10) / 10;
+    Object.assign(g, { qty: 1, unit: 'meal', cal: Math.round(g.sub.reduce((a, x) => a + (Number(x.cal) || 0), 0)), pro: s('pro'), fib: s('fib'), carb: s('carb'), fat: s('fat'), est: g.sub.some(x => x.est) });
+    return g;
+  }
+  function wzMealItem(g, slot, kind = 'wand') {
+    const sub = g.items.map(x => { const f = x.food && I().foodById.get(x.food);
+      return f ? entryFromFood(f, x.qty, slot, x.unit) : { food: '', meal: slot, name: x.name, qty: x.qty, unit: x.unit, cal: x.cal, pro: x.pro ?? null, fib: x.fib ?? null, carb: x.carb ?? null, fat: x.fat ?? null, est: !!x.est }; });
+    return wzGroup({ key: uid('w'), kind, locked: kind !== 'wand', meal: slot, name: g.name, mealId: g.id, sub });
+  }
+  // randomized fill + hill climb, several restarts; any result inside the tolerance can win, so rerolling varies
+  function wzSearch(w, tg, restarts) {
+    const C = wzCands(), slots = visibleSlots(), kept = w.items.filter(it => it.locked);
+    const opts = new Map(slots.map(s => [s, []]));
+    for (const c of C.foods) for (const [s, n] of c.slots) if (opts.has(s) && !wzSkip(wzFoodItem(c, c.por[0], s), w)) opts.get(s).push({ c, n, w: Math.sqrt(n) });
+    for (const m of C.meals) for (const [s, n] of m.slots) if (opts.has(s) && !wzSkip(wzMealItem(m.meal, s), w)) opts.get(s).push({ m, n, w: Math.sqrt(n) * 1.2 });
+    const pick = arr => { let x = arr.reduce((a, o) => a + o.w, 0) * Math.random(); for (const o of arr) { x -= o.w; if (x <= 0) return o; } return arr[arr.length - 1]; };
+    const mk = (o, s) => { const it = o.m ? wzMealItem(o.m.meal, s) : wzFoodItem(o.c, pick(o.c.por.map(p => ({ ...p, w: p.n }))), s); it._n = o.n; return it; };
+    const free = (items, o, except) => { const used = new Set(items.filter(i => i !== except).flatMap(wzIds)); return !(o.m ? o.m.meal.items.map(x => x.food || x.name) : [o.c.f.id]).some(id => used.has(id)); };
+    const score = items => { const e = wzEval(wzTotals(items), tg, w); let o = e.pen; for (const i of items) if (i._n) o += 0.05 / Math.sqrt(i._n); return { e, o }; };
+    const inSlot = (items, s) => items.filter(i => i.meal === s).length;
+    const results = [];
+    for (let r = 0; r < restarts; r++) {
+      let items = kept.slice();
+      for (const s of slots) {
+        const have = inSlot(items, s);
+        if (!opts.get(s).length || have >= WZ_CAP) continue;
+        if (!have && Math.random() > (C.slotUse.get(s) || 0)) continue;   // slots he rarely uses stay empty most of the time
+        const sizes = C.slotSizes.get(s) || [1], k = Math.max(1, sizes[Math.floor(Math.random() * sizes.length)]) - have;
+        for (let j = 0; j < k; j++) { const av = opts.get(s).filter(o => free(items, o)); if (!av.length) break; items.push(mk(pick(av), s)); }
+      }
+      let cur = score(items);
+      for (let step = 0; step < 120; step++) {
+        const wand = items.filter(i => !i.locked), mv = Math.random(); let next = null;
+        if (mv < 0.4 && wand.length) {
+          const a = wand[Math.floor(Math.random() * wand.length)], av = (opts.get(a.meal) || []).filter(o => free(items, o, a));
+          if (av.length) { const n = mk(pick(av), a.meal); next = items.map(i => i === a ? n : i); }
+        } else if (mv < 0.65 && wand.length) {
+          const a = wand[Math.floor(Math.random() * wand.length)], c = !a.sub && C.byId.get(a.food);
+          if (c && c.por.length > 1) { const n = wzFoodItem(c, c.por[Math.floor(Math.random() * c.por.length)], a.meal); n._n = a._n; next = items.map(i => i === a ? n : i); }
+        } else if (mv < 0.85) {
+          const s = slots[Math.floor(Math.random() * slots.length)];
+          if (((C.slotUse.get(s) || 0) >= 0.1 || inSlot(items, s)) && inSlot(items, s) < WZ_CAP) {
+            const av = opts.get(s).filter(o => free(items, o)); if (av.length) next = items.concat(mk(pick(av), s));
+          }
+        } else if (wand.length) { const a = wand[Math.floor(Math.random() * wand.length)]; next = items.filter(i => i !== a); }
+        if (!next) continue;
+        const sc = score(next); if (sc.o < cur.o) { items = next; cur = sc; }
+      }
+      results.push({ items, ...cur });
+    }
+    const ok = results.filter(x => x.e.ok);
+    if (ok.length) return pick(ok.map(x => ({ x, w: Math.exp(-x.o * 4) }))).x;
+    return results.sort((a, b) => a.o - b.o)[0];
+  }
+  function wzWand() {
+    const w = wiz(), C = wzCands();
+    if (!C.foods.length && !C.meals.length) return toast('No foods logged in the last 180 days yet');
+    w.ex = w.ex.filter(e => e.kind !== 'suggest');
+    w.items = w.items.filter(i => i.locked);
+    let best = wzSearch(w, wzTargets(w), 30), sug = null;
+    // food alone falls short: try one of his usual activities at his typical length and burn
+    if (!best.e.ok && !w.noEx && wzOn(w, 'cal')) {
+      for (const a of C.acts.slice(0, 4)) {
+        const r = wzSearch(w, wzTargets(w, a.cal), 12);
+        if (r.o < best.o - 0.5 && (!sug || r.o < sug.r.o)) sug = { a, r };
+      }
+      if (sug) best = sug.r;
+    }
+    w.items = best.items.map(i => { const c = { ...i }; delete c._n; return c; });
+    if (sug) w.ex.push({ key: uid('x'), kind: 'suggest', name: sug.a.name, min: sug.a.min, cal: sug.a.cal, est: true });
+    wzSave(); render();
+    const e = wzEval(wzTotals(w.items), wzTargets(w), w);
+    toast(e.ok ? (sug ? `🪄 Targets met with +${sug.a.min ? sug.a.min + ' min ' : ''}${sug.a.name}` : '🪄 All targets met') : `🪄 Closest I could get · ${e.miss[0]}`);
+  }
+  // about 3 swaps in the same meal that keep the totals close (plus other amounts he has had of this food)
+  function wzSwaps(w, it) {
+    const C = wzCands(), tg = wzTargets(w), others = w.items.filter(i => i !== it), used = new Set(others.flatMap(wzIds)), out = [];
+    for (const c of C.foods) {
+      if (!c.slots.has(it.meal) || used.has(c.f.id) || c.f.id === it.food) continue;
+      for (const p of c.por) { const n = wzFoodItem(c, p, it.meal); if (wzSkip(n, w)) break; n._n = c.slots.get(it.meal); out.push(n); }
+    }
+    for (const m of C.meals) {
+      if (!m.slots.has(it.meal) || it.mealId === m.meal.id || m.meal.items.some(x => used.has(x.food || x.name))) continue;
+      const n = wzMealItem(m.meal, it.meal); if (!wzSkip(n, w)) { n._n = m.slots.get(it.meal); out.push(n); }
+    }
+    const best = new Map();
+    for (const n of out) {
+      const s = wzEval(wzTotals(others.concat(n)), tg, w).pen + 0.05 / Math.sqrt(n._n || 1) + Math.random() * 0.08, k = n.mealId || n.food;
+      if (!best.has(k) || s < best.get(k).s) best.set(k, { n, s });
+    }
+    return [...best.values()].sort((a, b) => a.s - b.s).slice(0, 3).map(x => { delete x.n._n; return x.n; });
+  }
+  async function loadDayPlans() {
+    try {
+      const j = await api('read', { tab: 'Day Plans', person: PERSON });
+      const js = v => { try { const a = JSON.parse(v || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } };
+      const rows = j.rows.filter(r => r.PlanID && r.Name).map(r => ({ id: String(r.PlanID), name: String(r.Name), items: js(r['Items (JSON)']), ex: js(r['Exercise (JSON)']),
+        cal: Number(r.Calories) || 0, pro: r['Protein (g)'] === '' ? null : Number(r['Protein (g)']) }));
+      // keep changes still waiting to save (a just-saved plan, an edit, a delete) so the read can't undo them
+      const q = state.queue.filter(x => x.body && x.body.tab === 'Day Plans'), local = new Map((state.data.dayPlans || []).map(x => [x.id, x]));
+      const adding = new Set(q.filter(x => x.action === 'append').flatMap(x => x.body.rows.map(r => r.PlanID)));
+      const editing = new Set(q.filter(x => x.action === 'update').map(x => x.body.id)), gone = new Set(q.filter(x => x.action === 'delete').map(x => x.body.id));
+      const have = new Set(rows.map(x => x.id));
+      state.data.dayPlans = rows.map(x => editing.has(x.id) && local.get(x.id) ? local.get(x.id) : x).concat([...adding].filter(id => !have.has(id) && local.get(id)).map(id => local.get(id))).filter(x => !gone.has(x.id));
+      persist(); if (state.modal && state.modal.type === 'wzplans') renderModal();
+    } catch (e) { if (/no such tab/.test(String(e.message))) { state.data.dayPlans = []; persist(); } }
+  }
+
+  // ----- wizard screen -----
+  function wizView() {
+    const w = wiz(), tg = wzTargets(w), T = wzTotals(w.items), ev = wzEval(T, tg, w), slots = visibleSlots();
+    const tc = Number(w.tol.cal) || 0, tm = Number(w.tol.g) || 0, hasNone = !w.items.length && !w.ex.length;
+    const chk = k => `<input type="checkbox" class="wz-chk" data-wzchk="${k}" ${wzOn(w, k) ? 'checked' : ''} ${k !== 'cal' && macroGoal(k) == null ? 'disabled' : ''} aria-label="Aim for this target">`;
+    const calSt = !wzOn(w, 'cal') ? 'off' : Math.abs(T.cal - tg.cal) <= tc ? 'met' : T.cal > tg.cal ? 'over' : '';
+    const calPct = tg.cal > 0 ? Math.min(100, T.cal / tg.cal * 100) : 0;
+    const chip = (k, lb) => {
+      const g = tg[k], v = T[k], on = wzOn(w, k);
+      const st = g == null ? 'off nogoal' : (on ? '' : 'off ') + (MACRO_MIN[k] ? (v >= g - tm ? 'met' : '') : (v > g + tm ? 'over' : 'met'));
+      return `<label class="mac wz ${st}">${chk(k)}<span>${lb}</span><b>${r0(v)}${g != null ? `<small> / ${r0(g)}</small>` : ''} g</b>${g != null ? `<i class="mac-bar"><i style="width:${Math.min(100, v / g * 100)}%"></i></i>` : '<small class="wz-nogoal">no goal</small>'}</label>`;
+    };
+    const status = hasNone ? '<div class="wz-status">Tap 🪄 Wand to build a day from foods you eat</div>'
+      : ev.ok ? '<div class="wz-status ok">✓ All checked targets met</div>' : `<div class="wz-status bad">${esc(ev.miss.join(' · '))}</div>`;
+    let h = `<section class="card wz-top">
+      <div class="field"><label>Plan for</label><input id="wzdate" type="date" value="${esc(w.date)}" min="${today()}"></div>
+      <div class="wz-cal ${calSt}"><label class="wz-lbl">${chk('cal')}<span>Calories</span></label><b>${fmt(T.cal)}<small> / ${fmt(tg.cal)}</small></b></div>
+      <div class="bar"><div class="fill ${calSt === 'over' ? 'over' : ''}" style="width:${calPct}%"></div></div>
+      <div class="wz-budget">Budget ${fmt(tg.budget)}${tg.exCal ? ` + ${fmt(tg.exCal)} exercise` : ''} · ${esc(dayLabel(w.date))}</div>
+      <div class="macros">${MACROS.map(([k, lb]) => chip(k, lb)).join('')}</div>
+      ${status}<button class="link-btn wz-tol" data-wzact="tol">Close enough: ±${fmt(tc)} cal · ±${fmt(tm)} g ›</button></section>`;
+    const tag = it => it.kind === 'pulled' ? ' · <span class="wz-tag">pulled in</span>' : it.kind === 'manual' ? ' · <span class="wz-tag">added</span>' : '';
+    const row = it => `<div class="entry wz-item ${it.locked ? 'kept' : ''}" role="button" data-wzitem="${esc(it.key)}">
+      <div class="nm"><div>${it.sub ? '⭐ ' : ''}${esc(it.name)}${it.est ? '<span class="est">EST</span>' : ''}</div><small>${it.sub ? `${it.sub.length} items` : esc(qtyText(it))}${tag(it)}</small></div>
+      <div class="cal">${fmt(it.cal)}${state.macro ? '' : ''}</div>
+      <button class="wz-pin ${it.locked ? 'on' : ''}" data-wzpin="${esc(it.key)}" aria-label="${it.locked ? 'Unlock' : 'Keep'}">📌</button><button class="wz-x" data-wzdel="${esc(it.key)}" aria-label="Remove">✕</button></div>`;
+    for (const s of slots) {
+      const its = w.items.filter(i => i.meal === s);
+      h += `<section class="card"><h2>${s}<small>${its.length ? fmt(its.reduce((a, i) => a + (Number(i.cal) || 0), 0)) + ' cal' : ''}</small></h2>${its.map(row).join('')}<button class="add-line" data-wzadd="${s}">+ Add</button></section>`;
+    }
+    const other = w.items.filter(i => !slots.includes(i.meal));
+    if (other.length) h += `<section class="card"><h2>Other<small>hidden meals</small></h2>${other.map(row).join('')}</section>`;
+    h += `<section class="card"><h2>Exercise<small>${tg.exCal ? '+' + fmt(tg.exCal) + ' cal' : ''}</small></h2>
+      ${w.ex.map(e => `<div class="entry wz-item ${e.kind === 'suggest' ? 'wz-sug' : ''}"><div class="nm"><div>${e.kind === 'suggest' ? '💡 ' : ''}${e.min ? '+' + r0(e.min) + ' min ' : ''}${esc(e.name)}</div><small>${e.kind === 'suggest' ? `suggested · tap Keep to use it` : e.kind === 'pulled' ? 'pulled in' : 'added'}</small></div><div class="cal">${fmt(e.cal)}</div>
+        ${e.kind === 'suggest' ? `<button class="btn ghost wz-keep" data-wzkeep="${esc(e.key)}">Keep</button>` : ''}<button class="wz-x" data-wzexdel="${esc(e.key)}" aria-label="Remove">✕</button></div>`).join('') || '<div class="empty">No exercise in this plan</div>'}
+      <button class="add-line" data-wzact="addex">+ Add exercise</button>
+      <div class="toggle-row"><span>No additional exercise<small class="toggle-sub">${w.noEx ? 'The wand plans food only' : 'If food alone falls short, the wand may suggest one activity'}</small></span><button class="switch ${w.noEx ? 'on' : ''}" data-wzact="noex" aria-label="No additional exercise"></button></div></section>`;
+    h += `<div class="wz-actions"><button class="btn big wz-wand" data-wzact="wand">🪄 Wand</button>
+      <div class="wz-row"><button class="btn ghost" data-wzact="pull">📥 Pull in day</button><button class="btn ghost" data-wzact="apply" ${hasNone ? 'disabled' : ''}>✓ Apply</button><button class="btn ghost" data-wzact="save" ${w.items.length ? '' : 'disabled'}>💾 Save plan</button></div>
+      <div class="sub">Tap a food for swaps · 📌 keeps it when you wand again</div>
+      <div class="tell"><button data-wzact="plans">📂 Saved plans</button>${hasNone ? '' : '<button data-wzact="clear">🧹 Clear</button>'}</div></div>`;
+    return h;
+  }
+  function bindWiz() {
+    const w = wiz(), find = k => w.items.find(i => i.key === k);
+    const wd = $('#wzdate'); if (wd) wd.onchange = () => { if (!wd.value) return; w.date = wd.value < today() ? today() : wd.value; wzSave(); render(); };
+    document.querySelectorAll('[data-wzchk]').forEach(c => c.onchange = () => { w.chk[c.dataset.wzchk] = c.checked; wzSave(); render(); });
+    document.querySelectorAll('[data-wzitem]').forEach(b => b.onclick = ev => { if (ev.target.closest('[data-wzpin],[data-wzdel]')) return; openModal({ type: 'wzswap', key: b.dataset.wzitem }); });
+    document.querySelectorAll('[data-wzpin]').forEach(b => b.onclick = ev => { ev.stopPropagation(); const it = find(b.dataset.wzpin); if (it) { it.locked = !it.locked; wzSave(); render(); } });
+    document.querySelectorAll('[data-wzdel]').forEach(b => b.onclick = ev => { ev.stopPropagation(); const it = find(b.dataset.wzdel); if (!it) return;
+      const at = w.items.indexOf(it); w.items.splice(at, 1); wzSave(); render(); toast(`Removed ${it.name}`, 'Undo', () => { w.items.splice(at, 0, it); wzSave(); render(); }); });
+    document.querySelectorAll('[data-wzadd]').forEach(b => b.onclick = () => openModal({ type: 'add', slot: b.dataset.wzadd, tab: 'foods', wiz: true }));
+    document.querySelectorAll('[data-wzexdel]').forEach(b => b.onclick = () => { w.ex = w.ex.filter(e => e.key !== b.dataset.wzexdel); wzSave(); render(); });
+    document.querySelectorAll('[data-wzkeep]').forEach(b => b.onclick = () => { const e = w.ex.find(x => x.key === b.dataset.wzkeep); if (e) { e.kind = 'manual'; wzSave(); render(); toast(`${e.name} kept`); } });
+    document.querySelectorAll('[data-wzact]').forEach(b => b.onclick = () => wzAct(b.dataset.wzact));
+  }
+  function wzAct(a) {
+    const w = wiz();
+    if (a === 'wand') return wzWand();
+    if (a === 'noex') { w.noEx = !w.noEx; if (w.noEx) w.ex = w.ex.filter(e => e.kind !== 'suggest'); wzSave(); return render(); }
+    if (a === 'addex') return openModal({ type: 'ex', wiz: true });
+    if (a === 'pull') return openModal({ type: 'wzpull', d: w.date });
+    if (a === 'apply') return openModal({ type: 'wzapply', dows: [], weeks: 1, replace: false });
+    if (a === 'save') return openModal({ type: 'wzsave', name: w.name || '' });
+    if (a === 'plans') { loadDayPlans(); return openModal({ type: 'wzplans' }); }
+    if (a === 'tol') return openModal({ type: 'wztol' });
+    if (a === 'clear') {
+      const prev = { items: w.items, ex: w.ex }; w.items = []; w.ex = []; delete w.name; wzSave(); render();
+      return toast('Wizard cleared', 'Undo', () => { w.items = prev.items; w.ex = prev.ex; wzSave(); render(); });
+    }
+  }
+  // + Add from the wizard: the existing add-food / meal / quick-entry / exercise sheets drop their result into the plan
+  function wzAddEntries(es, slot) {
+    const w = wiz(); es.forEach(e => w.items.push({ ...e, meal: slot, key: uid('w'), kind: 'manual', locked: true }));
+    wzSave(); render(); toast(`Added to ${slot} in the plan`);
+  }
+
+  // ----- wizard sheets -----
+  function wzSwapSheet(m) {
+    const w = wiz(), it = w.items.find(i => i.key === m.key);
+    if (!it) return head('Swap') + '<div class="sheet-body"><div class="empty">That item is gone.</div></div>';
+    if (!m.list) m.list = wzSwaps(w, it);
+    const T0 = wzTotals(w.items);
+    const delta = n => { const T = wzTotals(w.items.filter(i => i !== it).concat(n)), d = (k, u) => { const v = r0(T[k] - T0[k]); return `${v > 0 ? '+' : v < 0 ? '−' : '±'}${Math.abs(v)}${u}`; };
+      return `${d('cal', ' cal')} · protein ${d('pro', ' g')}`; };
+    const c = !it.sub && wzCands().byId.get(it.food);
+    m._por = c ? c.por.filter(p => !(Math.abs(p.qty - it.qty) < 1e-6 && p.unit === it.unit)).map(p => wzFoodItem(c, p, it.meal)) : [];
+    return head(it.name) + `<div class="sheet-body">
+      <div class="sub" style="text-align:left;margin:0 0 6px">${esc(it.meal)} · ${it.sub ? it.sub.map(x => esc(x.name)).join(', ') : esc(qtyText(it))} · ${fmt(it.cal)} cal${macroText(it) ? '<br>' + esc(macroText(it)) : ''}</div>
+      ${m._por.length ? `<div class="sub" style="text-align:left;margin:10px 0 6px">Other amounts you've had</div><div class="wz-por">${m._por.map((n, i) => `<button class="btn ghost" data-wzpor="${i}">${esc(qtyText(n))} · ${fmt(n.cal)}</button>`).join('')}</div>` : ''}
+      <div class="sub" style="text-align:left;margin:12px 0 4px">Swaps that keep you close</div>
+      ${m.list.map((n, i) => `<button class="pick" data-wzswap="${i}"><div class="nm"><div>${n.sub ? '⭐ ' : ''}${esc(n.name)}</div><small>${n.sub ? n.sub.length + ' items' : esc(qtyText(n))} · ${esc(delta(n))}</small></div><div class="cal">${fmt(n.cal)}</div></button>`).join('')
+        || `<div class="empty">No other foods you've had at ${esc(it.meal.toLowerCase())} fit here.</div>`}
+      <button class="btn ghost big" data-m="wzmore" style="margin-top:10px">↻ Other swaps</button>
+      <button class="btn big" data-m="wzpin" style="margin-top:8px">${it.locked ? '📌 Let the wand change it' : '📌 Keep this one'}</button></div>`;
+  }
+  function wzReplace(m, n) {
+    const w = wiz(), it = w.items.find(i => i.key === m.key); if (!it) return closeModal();
+    Object.assign(n, { key: it.key, kind: it.kind === 'wand' ? 'wand' : 'manual', locked: it.locked });
+    delete n._n; w.items[w.items.indexOf(it)] = n; wzSave(); closeModal(); toast(`Swapped in ${n.name}`);
+  }
+  function wzPullSheet(m) {
+    const d = m.d || wiz().date, x = dayTotals(d);
+    return head('Pull in a day') + `<div class="sheet-body">
+      <div class="field"><label>Day</label><input id="wzpd" type="date" value="${esc(d)}"></div>
+      <div class="sub" style="text-align:left">${esc(dayLabel(d))}: ${x.log.length} food${x.log.length === 1 ? '' : 's'} (${fmt(x.eaten)} cal)${x.ex.length ? ` · ${x.ex.length} exercise (${fmt(x.burned)} cal)` : ''}</div>
+      ${x.log.slice(0, 12).map(l => `<div class="entry"><div class="nm"><div>${esc(l.name)}</div><small>${esc(l.meal)} · ${esc(qtyText(l))}${isPlanned(l) ? ' · planned' : ''}</small></div><div class="cal">${fmt(l.cal)}</div></div>`).join('')}
+      ${x.log.length > 12 ? `<div class="sub">+ ${x.log.length - 12} more</div>` : ''}
+      <button class="btn big" data-m="wzpullgo" style="margin-top:10px" ${x.log.length || x.ex.length ? '' : 'disabled'}>📥 Pull in as locked items</button>
+      <div class="sub" style="margin-top:8px">The wand fills the rest around them. Pulling in the day you're planning won't add those foods twice.</div></div>`;
+  }
+  function wzPull(m) {
+    const w = wiz(), d = m.d || w.date, x = dayTotals(d);
+    const have = new Set(w.items.map(i => i.src).filter(Boolean)), haveEx = new Set(w.ex.map(e => e.src).filter(Boolean));
+    let n = 0;
+    x.log.forEach(l => { const src = l.id || entryKey(l); if (have.has(src)) return;
+      w.items.push({ food: l.food || '', meal: l.meal, name: l.name, qty: l.qty, unit: l.unit, cal: l.cal, pro: l.pro ?? null, fib: l.fib ?? null, carb: l.carb ?? null, fat: l.fat ?? null, est: !!l.est,
+        key: uid('w'), kind: 'pulled', locked: true, src, srcDate: d }); n++; });
+    x.ex.forEach(e => { const src = e.id || `${d}|${e.name}`; if (haveEx.has(src)) return;
+      w.ex.push({ key: uid('x'), kind: 'pulled', name: e.name, min: e.min || null, cal: e.cal, est: !!e.est, src, srcDate: d }); n++; });
+    wzSave(); closeModal(); toast(n ? `Pulled in ${n} item${n === 1 ? '' : 's'} from ${dayLabel(d)}` : 'Already pulled in');
+  }
+  function wzApplyDates(w, m) {
+    const start = w.date < today() ? today() : w.date, end = addDays(start, 27), set = new Set([start]);
+    if ((m.dows || []).length) for (let i = 0; i < (m.weeks || 1) * 7; i++) { const d = addDays(start, i); if (d > end) break; if (m.dows.includes(DOW[parse(d).getDay()])) set.add(d); }
+    return [...set].sort();
+  }
+  function wzApplySheet(m) {
+    const w = wiz(), ds = wzApplyDates(w, m), sug = w.ex.some(e => e.kind === 'suggest');
+    return head('Apply plan') + `<div class="sheet-body">
+      <div class="sub" style="text-align:left;margin:0 0 4px">Adds the plan as planned food${w.ex.some(e => e.kind !== 'suggest') ? ' and exercise' : ''} on ${esc(wzDay(ds[0]))}. To repeat it, pick weekdays:</div>
+      <div class="dow">${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => `<button class="${(m.dows || []).includes(d) ? 'on' : ''}" data-wzdow="${d}">${d}</button>`).join('')}</div>
+      ${(m.dows || []).length ? `<div class="seg" style="margin-top:10px">${[1, 2, 3, 4].map(n => `<button class="${(m.weeks || 1) === n ? 'on' : ''}" data-wzwk="${n}">${n} week${n > 1 ? 's' : ''}</button>`).join('')}</div>` : ''}
+      <div class="toggle-row" style="margin-top:6px"><span>Replace planned food<small class="toggle-sub">${m.replace ? 'Planned food in those meals is swapped for the plan. Food you’ve already eaten is never touched.' : 'Meals that already have food are left alone.'}</small></span><button class="switch ${m.replace ? 'on' : ''}" data-m="wzrep" aria-label="Replace planned food"></button></div>
+      ${sug ? '<div class="sub wz-warn">The suggested exercise is left out unless you tap Keep on it.</div>' : ''}
+      <div class="wz-dates">${ds.map(d => `<span class="chip">${esc(wzDay(d))}</span>`).join('')}</div>
+      <button class="btn big" data-m="wzapplygo" style="margin-top:10px">✓ Apply to ${ds.length} day${ds.length === 1 ? '' : 's'}</button></div>`;
+  }
+  function wzApply(m) {
+    const w = wiz(), ds = wzApplyDates(w, m), skipped = []; let nf = 0, nx = 0, nd = 0;
+    for (const d of ds) {
+      const there0 = (I().logByDate.get(d) || []).slice();
+      const fromHere = new Set(w.items.filter(i => i.srcDate === d && i.src).map(i => i.src));
+      const add = []; let touched = false;
+      for (const s of [...new Set(w.items.map(i => i.meal))]) {
+        const plan = w.items.filter(i => i.meal === s && !(i.srcDate === d && i.src)); if (!plan.length) continue;
+        const there = there0.filter(l => l.meal === s && !fromHere.has(l.id || entryKey(l)));
+        if (there.length) {
+          if (!m.replace || there.some(l => !isPlanned(l))) { skipped.push(`${s} ${parse(d).toLocaleDateString(undefined, { weekday: 'short' })}`); continue; }
+          state.data.log = state.data.log.filter(x => !there.includes(x)); there.forEach(l => { if (l.id) enqueue('deleteLog', { id: l.id }); }); persist();
+        }
+        plan.forEach(i => (i.sub || [i]).forEach(x => add.push({ food: x.food || '', meal: s, name: x.name, qty: Number(x.qty), unit: x.unit, cal: Number(x.cal) || 0,
+          pro: x.pro ?? null, fib: x.fib ?? null, carb: x.carb ?? null, fat: x.fat ?? null, est: !!x.est })));
+      }
+      if (add.length) { addEntries(add, d, true); if (d <= today()) add.forEach(e => markPlanned(e, true)); nf += add.length; touched = true; }
+      const exThere = I().exByDate.get(d) || [];
+      for (const e of w.ex) {
+        if (e.kind === 'suggest' || (e.srcDate === d && e.src)) continue;
+        if (exThere.some(x => String(x.name).trim().toLowerCase() === String(e.name).trim().toLowerCase())) { skipped.push(`${e.name} ${parse(d).toLocaleDateString(undefined, { weekday: 'short' })}`); continue; }
+        const n = { id: uid('X'), date: d, name: e.name, min: Number(e.min) || null, cal: Number(e.cal) || 0, source: 'Plan', est: !!e.est, planned: true };
+        state.data.exercise.push(n); idx = null;
+        enqueue('addExercise', { entry: n, budget: budgetFor(d) });
+        enqueue('update', { tab: 'Exercise', id: n.id, values: { Planned: 'Yes', Estimate: n.est ? 'Yes' : 'No' } }); nx++; touched = true;
+      }
+      if (touched) { ensureLocalDay(d); nd++; }
+    }
+    persist(); closeModal();
+    const msg = nf || nx ? `Planned ${nf} food${nf === 1 ? '' : 's'}${nx ? ` and ${nx} exercise` : ''} on ${nd} day${nd === 1 ? '' : 's'}` : 'Nothing added';
+    toast(skipped.length ? `${msg} · kept existing ${skipped.slice(0, 3).join(', ')}${skipped.length > 3 ? '…' : ''}` : msg, ds.length === 1 && nd ? 'Go there' : null, () => { state.view = 'day'; state.date = ds[0]; render(); });
+  }
+  function wzSaveSheet(m) {
+    const w = wiz(), T = wzTotals(w.items), ex = w.ex.filter(e => e.kind !== 'suggest'), plans = state.data.dayPlans || [];
+    const nm = String(m.name || '').trim().toLowerCase(), dup = nm && plans.find(p => p.name.toLowerCase() === nm);
+    return head('Save plan') + `<div class="sheet-body">
+      <div class="sub" style="text-align:left">${w.items.length} item${w.items.length === 1 ? '' : 's'} · ${fmt(T.cal)} cal · protein ${r0(T.pro)} g${ex.length ? ` · ${ex.map(e => esc(e.name)).join(', ')}` : ''}</div>
+      <div class="field" style="margin-top:10px"><label>Plan name</label><input id="wzname" value="${esc(m.name || '')}" placeholder="e.g. High-protein weekday" autocomplete="off"></div>
+      <div class="sub" id="wzdup" style="text-align:left">${dup ? `Replaces your saved plan “${esc(dup.name)}”.` : 'Find it later under 📂 Saved plans. Your dietitian can also mix it in when it plans your days.'}</div>
+      <button class="btn big" data-m="wzsavego" style="margin-top:10px">💾 Save plan</button></div>`;
+  }
+  function wzSavePlan() {
+    const w = wiz(), name = ($('#wzname').value || '').trim(); if (!name) return toast('Give the plan a name');
+    const T = wzTotals(w.items);
+    const items = w.items.flatMap(i => (i.sub || [i]).map(x => ({ slot: i.meal, food: x.food || '', name: x.name, qty: Number(x.qty), unit: x.unit, cal: Number(x.cal) || 0,
+      pro: x.pro ?? null, fib: x.fib ?? null, carb: x.carb ?? null, fat: x.fat ?? null, est: !!x.est, ...(i.sub ? { group: i.name, groupId: i.mealId || '' } : {}) })));
+    const ex = w.ex.filter(e => e.kind !== 'suggest').map(e => ({ name: e.name, min: Number(e.min) || null, cal: Number(e.cal) || 0 }));
+    const vals = { Name: name, 'Items (JSON)': JSON.stringify(items), 'Exercise (JSON)': JSON.stringify(ex), Calories: r0(T.cal), 'Protein (g)': r0(T.pro), 'Carbs (g)': r0(T.carb), 'Fat (g)': r0(T.fat), 'Fiber (g)': r0(T.fib), Updated: today() };
+    const plans = state.data.dayPlans = state.data.dayPlans || [];
+    const old = plans.find(p => p.name.toLowerCase() === name.toLowerCase()), local = { name, items, ex, cal: r0(T.cal), pro: r0(T.pro) };
+    if (old) { Object.assign(old, local); enqueue('update', { tab: 'Day Plans', id: old.id, values: vals }); }
+    else { const id = 'DP' + uid('').toUpperCase(); plans.push({ id, ...local }); enqueue('append', { tab: 'Day Plans', headers: WZ_PLAN_HEADERS, rows: [{ PlanID: id, Person: PERSON, ...vals, Notes: 'Saved in app' }] }); }
+    w.name = name; wzSave(); persist(); closeModal(); toast(`${old ? 'Updated' : 'Saved'} “${name}”`);
+  }
+  function wzPlansSheet(m) {
+    const ps = state.data.dayPlans || [];
+    return head('Saved plans') + `<div class="sheet-body">${ps.length ? ps.map((p, i) => `<div class="entry"><div class="nm"><div>${esc(p.name)}</div><small>${p.items.length} items · ${fmt(p.cal)} cal${p.pro != null ? ` · protein ${r0(p.pro)} g` : ''}${p.ex.length ? ` · ${p.ex.map(e => esc(e.name)).join(', ')}` : ''}</small></div>
+      <button class="btn ghost" data-wzload="${i}">Load</button><button class="wz-x ${m.confirm === i ? 'confirm' : ''}" data-wzpdel="${i}" aria-label="Delete">${m.confirm === i ? 'Delete?' : '🗑'}</button></div>`).join('')
+      : `<div class="empty">${state.data.dayPlans ? 'No saved plans yet. Build a day and tap 💾 Save plan.' : 'Loading…'}</div>`}
+      <div class="sub" style="margin-top:10px">Loading a plan replaces what's in the wizard. Your dietitian can mix saved plans into the days it plans for you.</div></div>`;
+  }
+  function wzLoadPlan(p) {
+    const w = wiz(), items = [];
+    for (const x of p.items) {
+      const e = { food: x.food || '', meal: x.slot, name: x.name, qty: x.qty, unit: x.unit, cal: x.cal, pro: x.pro ?? null, fib: x.fib ?? null, carb: x.carb ?? null, fat: x.fat ?? null, est: !!x.est };
+      if (x.group) {
+        let g = items.find(i => i.sub && i.name === x.group && i.meal === x.slot);
+        if (!g) { g = { key: uid('w'), kind: 'manual', locked: true, meal: x.slot, name: x.group, mealId: x.groupId || '', sub: [] }; items.push(g); }
+        g.sub.push(e);
+      } else items.push({ ...e, key: uid('w'), kind: 'manual', locked: true });
+    }
+    items.forEach(i => { if (i.sub) wzGroup(i); });
+    w.items = items; w.ex = p.ex.map(e => ({ key: uid('x'), kind: 'manual', name: e.name, min: e.min, cal: e.cal })); w.name = p.name;
+    wzSave(); closeModal(); toast(`Loaded “${p.name}”`);
+  }
+  function wzTolSheet() {
+    const w = wiz();
+    return head('Close enough') + `<div class="sheet-body"><div class="sub" style="text-align:left">How far from a target still counts as hitting it.</div>
+      <div class="qty-row"><div class="field" style="flex:1"><label>Calories ±</label><input id="wztc" type="number" inputmode="numeric" min="0" step="10" value="${esc(w.tol.cal)}"></div>
+      <div class="field" style="flex:1"><label>Macros ± (g)</label><input id="wztg" type="number" inputmode="numeric" min="0" step="1" value="${esc(w.tol.g)}"></div></div>
+      <button class="btn big" data-m="wztolsave">Save</button></div>`;
+  }
+  function wzModalAct(a, m) {
+    const w = wiz();
+    if (a === 'wzmore') { m.list = null; return renderModal(); }
+    if (a === 'wzpin') { const it = w.items.find(i => i.key === m.key); if (it) { it.locked = !it.locked; wzSave(); } return closeModal(); }
+    if (a === 'wzpullgo') return wzPull(m);
+    if (a === 'wzrep') { m.replace = !m.replace; return renderModal(); }
+    if (a === 'wzapplygo') return wzApply(m);
+    if (a === 'wzsavego') return wzSavePlan();
+    if (a === 'wztolsave') { w.tol = { cal: Math.max(0, Number($('#wztc').value) || 0), g: Math.max(0, Number($('#wztg').value) || 0) }; wzSave(); return closeModal(); }
+  }
+  function bindWizModal(m) {
+    document.querySelectorAll('[data-wzswap]').forEach(b => b.onclick = () => wzReplace(m, m.list[Number(b.dataset.wzswap)]));
+    document.querySelectorAll('[data-wzpor]').forEach(b => b.onclick = () => wzReplace(m, m._por[Number(b.dataset.wzpor)]));
+    const pd = $('#wzpd'); if (pd) pd.onchange = () => { if (pd.value) { m.d = pd.value; renderModal(); } };
+    document.querySelectorAll('[data-wzdow]').forEach(b => b.onclick = () => { const d = b.dataset.wzdow; m.dows = m.dows.includes(d) ? m.dows.filter(x => x !== d) : [...m.dows, d]; renderModal(); });
+    document.querySelectorAll('[data-wzwk]').forEach(b => b.onclick = () => { m.weeks = Number(b.dataset.wzwk); renderModal(); });
+    document.querySelectorAll('[data-wzload]').forEach(b => b.onclick = () => wzLoadPlan((state.data.dayPlans || [])[Number(b.dataset.wzload)]));
+    document.querySelectorAll('[data-wzpdel]').forEach(b => b.onclick = () => {
+      const i = Number(b.dataset.wzpdel); if (m.confirm !== i) { m.confirm = i; return renderModal(); }
+      const p = state.data.dayPlans[i]; state.data.dayPlans.splice(i, 1); m.confirm = null; persist();
+      enqueue('delete', { tab: 'Day Plans', id: p.id }); renderModal(); toast(`Deleted “${p.name}”`);
+    });
+    const nm = $('#wzname'); if (nm) nm.oninput = () => { m.name = nm.value; const el = $('#wzdup'), dup = (state.data.dayPlans || []).find(p => p.name.toLowerCase() === nm.value.trim().toLowerCase());
+      if (el) el.textContent = dup ? `Replaces your saved plan “${dup.name}”.` : 'Find it later under 📂 Saved plans. Your dietitian can also mix it in when it plans your days.'; };
+  }
+
   // ---------- start ----------
   // iPad home-screen app: iPadOS blurs a band under the status bar; css pushes the header below it
   const markIpad = () => document.documentElement.classList.toggle('ipad-app', (navigator.standalone === true || matchMedia('(display-mode: standalone)').matches) && Math.min(innerWidth, innerHeight) >= 700);
@@ -1548,5 +2022,5 @@
   });
   checkVersion();
   window.addEventListener('online', flush);
-  window.FL_DEBUG = { state, I, suggestions, rewards };
+  window.FL_DEBUG = { state, I, suggestions, rewards, wiz, wzCands, wzWand, wzTotals, wzTargets, wzEval };
 })();
