@@ -871,7 +871,7 @@
           <small>${f.brand ? `<span class="brand">${esc(f.brand)}</span>` : ''}${+Number(d.qty).toFixed(2)} ${esc(d.unit)}${ld ? ` · last ${esc(shortDay(ld))}` : ''}</small></div><div class="cal">${fmt(cal)}</div></button>`; }).join('')}
         ${usdaBlock(m, q, foods.length)}</div>`;
     } else if (m.tab === 'meals') {
-      const q = (m.mq || '').trim().toLowerCase(), toks = q.split(/\s+/).filter(Boolean);
+      const q = (m.q || '').trim().toLowerCase(), toks = q.split(/\s+/).filter(Boolean);
       const hit = (name, items) => { const t = mealText(name, items); return toks.every(k => t.includes(k)); };
       const saved = savedMeals().filter(g => !toks.length || hit(g.name, g.items));
       const meals = pastMeals(m.slot, state.date, toks.length > 0).filter(g => !toks.length || hit('', g.items)).slice(0, 60);
@@ -880,7 +880,7 @@
         <small>${brands(g.items)}${g.items.length} items · ${esc(g.items.map(x => x.name).join(', '))}</small></div><div class="cal">${fmt(g.items.reduce((a, x) => a + (x.cal || 0), 0))}</div></button>`).join('') + (meals.length ? `<div class="sub" style="text-align:left;margin:12px 0 4px">${toks.length ? 'Past meals' : 'Recent meals'}</div>` : '') : '') + meals.map((g, i) => `<button class="pick" data-meal="${i}"><div class="nm"><div>${esc(g.items.map(x => x.name).join(', '))}</div>
         <small>${brands(g.items)}${esc(g.meal)} · ${esc(dayLabel(g.date))}${String(g.date).slice(0, 4) !== today().slice(0, 4) ? ' ' + String(g.date).slice(0, 4) : ''}${g.count > 1 ? ` · had ${g.count}×` : ''}</small></div><div class="cal">${fmt(g.items.reduce((a, x) => a + x.cal, 0))}</div></button>`).join('')
         || `<div class="empty">${toks.length ? 'No meals match. Search looks back a year.' : 'No past meals yet.'}</div>`;
-      list = `<input id="q" class="search" type="search" enterkeyhint="search" placeholder="Search meals (e.g. turkey)" value="${esc(m.mq || '')}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"><div id="addres">${res}</div>`;
+      list = `<input id="q" class="search" type="search" enterkeyhint="search" placeholder="Search meals (e.g. turkey)" value="${esc(m.q || '')}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"><div id="addres">${res}</div>`;
       m._meals = meals; m._saved = saved;
     } else {
       return head(addTitle(m)) + `<div class="sheet-body">${seg}${quickForm(m)}</div>`;
@@ -1518,7 +1518,7 @@
     const xi = $('#xtra'); if (xi) xi.onchange = () => { if (Number(xi.value) > 0) { m.extra = Number(xi.value); renderModal(); } };
     document.querySelectorAll('[data-mslot]').forEach(b => b.onclick = () => { m.slot = b.dataset.mslot; renderModal(); });
     document.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { m.tab = b.dataset.tab; renderModal(); });
-    const q = $('#q'); if (q) q.oninput = () => { if (m.tab === 'meals') m.mq = q.value; else m.q = q.value; clearTimeout(searchT); searchT = setTimeout(() => { if (state.modal === m) renderModal(); }, 250); };
+    const q = $('#q'); if (q) q.oninput = () => { m.q = q.value; /* one search term shared by My foods and Meals */ clearTimeout(searchT); searchT = setTimeout(() => { if (state.modal === m) renderModal(); }, 250); };
     const qn = $('#qname'); if (qn) qn.oninput = () => { m.qname = qn.value; };
     const xq = $('#xq'); if (xq) xq.oninput = () => { m.q = xq.value; clearTimeout(searchT); searchT = setTimeout(() => { if (state.modal !== m) return; renderModal(); const n = $('#xq'); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }, 200); };
     const pickEx = name => { state.modal = { type: 'ex', name, min: '', cal: '', planned: state.date > today(), back: m }; renderModal(); };

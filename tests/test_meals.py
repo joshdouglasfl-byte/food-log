@@ -138,7 +138,10 @@ def run(pw, w, h, tag):
     page.fill('#q', 'zzzz'); page.wait_for_timeout(500)
     check('No meals match' in page.locator('#addres').inner_text(), f'{tag}: empty search message')
     page.click('[data-tab=foods]'); page.wait_for_timeout(200)
-    check(page.locator('#q').input_value() == '', f'{tag}: food search separate from meal search')
+    check(page.locator('#q').input_value() == 'zzzz', f'{tag}: meal search carries to My foods')
+    page.fill('#q', 'turkey'); page.wait_for_timeout(500)
+    page.click('[data-tab=meals]'); page.wait_for_timeout(300)
+    check(page.locator('#q').input_value() == 'turkey' and 'Turkey Sandwich, Black beans' in page.locator('#addres').inner_text(), f'{tag}: food search carries to Meals and filters')
     check(not errs, f'{tag}: no page errors {errs[:2]}')
     br.close()
 

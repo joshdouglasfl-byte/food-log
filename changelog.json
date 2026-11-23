@@ -2,6 +2,13 @@
  "entries": [
   {
    "date": "2026-11-22",
+   "version": "20261122205500",
+   "items": [
+    "Add food: your search now stays when you switch between My foods and Meals"
+   ]
+  },
+  {
+   "date": "2026-11-22",
    "version": "20261122204600",
    "items": [
     "Add food > Meals now has a search box: type a food or restaurant (like turkey or McDonald's) to find saved meals and anything you ate in the past year",
