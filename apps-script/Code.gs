@@ -44,6 +44,7 @@ function handle_(p) {
       case 'append': return out_(gAppend_(p));
       case 'update': return out_(gUpdate_(p));
       case 'delete': return out_(gDelete_(p));
+      case 'updateWhere': return out_(gUpdateWhere_(p));
       default: return out_({ ok: false, error: 'unknown action' });
     }
   } catch (err) {
@@ -488,6 +489,25 @@ function gUpdate_(p) {
   h = gAddCols_(s, h, Object.keys(p.values || {}));
   Object.entries(p.values || {}).forEach(([k, v]) => s.getRange(r, h.indexOf(k) + 1).setValue(gCell_(v, r)));
   return { ok: true };
+}
+
+/** updateWhere: {tab, match:{Header: value}, values:{Header: value}} -> sets values on every row whose match cells all equal (as text).
+ *  Writes only the value columns, in one go each. Used to rename a food across all Log rows. */
+function gUpdateWhere_(p) {
+  const s = gSheet_(p.tab); const h = gHeader_(s);
+  const m = Object.entries(p.match || {}); if (!m.length) throw new Error('match required');
+  const keys = Object.keys(p.values || {}); if (!keys.length) return { ok: true, updated: 0 };
+  const n = s.getLastRow() - 1; if (n < 1) return { ok: true, updated: 0 };
+  const mc = m.map(([k, v]) => [col_(h, k), String(v)]);
+  const cols = {}; mc.forEach(([c]) => { cols[c] = s.getRange(2, c + 1, n, 1).getValues(); });
+  const hit = []; for (let i = 0; i < n; i++) if (mc.every(([c, v]) => String(cols[c][i][0]) === v)) hit.push(i);
+  if (!hit.length) return { ok: true, updated: 0 };
+  keys.forEach(k => {
+    const c = col_(h, k), rg = s.getRange(2, c + 1, n, 1), vals = rg.getValues();
+    hit.forEach(i => { vals[i][0] = gCell_(p.values[k], i + 2); });
+    rg.setValues(vals);
+  });
+  return { ok: true, updated: hit.length };
 }
 
 /** delete: {tab, id} */

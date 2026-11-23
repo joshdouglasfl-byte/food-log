@@ -2,6 +2,15 @@
  "entries": [
   {
    "date": "2026-11-23",
+   "version": "20261123173000",
+   "items": [
+    "Swipe left on an exercise to delete it, the same as foods (Undo brings it back)",
+    "Tap a food in your day log to rename it. The new name shows everywhere you've logged it, past and future",
+    "Tap an exercise to rename just that entry (handy for a watch workout that came in as 'Other')"
+   ]
+  },
+  {
+   "date": "2026-11-23",
    "version": "20261123124100",
    "items": [
     "The brand or restaurant next to a food is now plain bold text with no grey background, so it's easier to read"

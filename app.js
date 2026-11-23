@@ -49,7 +49,7 @@
     if (!j.ok) throw new Error(j.error || 'request failed');
     return j;
   }
-  function enqueue(action, body) { state.queue.push({ action, body, qid: uid('q') }); save('queue', state.queue); flush(); }
+  function enqueue(action, body, opt) { state.queue.push({ action, body, qid: uid('q'), ...(opt && opt.optional ? { optional: true } : {}) }); save('queue', state.queue); flush(); }
   async function flush() {
     if (state.syncing || !state.queue.length) return;
     state.syncing = true; renderSync();
@@ -63,7 +63,8 @@
           // network trouble: stop and retry later; a server refusal: retry 3 times, then set the job aside
           if (/fetch|network|load failed|abort/i.test(msg)) throw err;
           job.tries = (job.tries || 0) + 1;
-          if (job.tries < 3) { save('queue', state.queue); throw err; }
+          // optional jobs (e.g. one that needs a newer sheet script) are set aside quietly on a server refusal
+          if (job.tries < 3 && !job.optional) { save('queue', state.queue); throw err; }
           const failed = load('failed', []); failed.push({ ...job, error: msg, at: new Date().toISOString() }); save('failed', failed.slice(-20));
           state.queue.shift(); save('queue', state.queue); continue;
         }
@@ -82,6 +83,7 @@
     state.queue.forEach(q => { if (q.body.entry && q.body.entry.food === tmp) q.body.entry.food = real; });
     state.queue.forEach(q => (q.body.rows || []).forEach(r => { if (r.FoodID === tmp) r.FoodID = real; }));
     state.queue.forEach(q => { if (q.action === 'update' && q.body.tab === 'Foods' && q.body.id === tmp) q.body.id = real; });
+    state.queue.forEach(q => { if (q.action === 'updateWhere' && q.body.match && q.body.match.FoodID === tmp) q.body.match.FoodID = real; });
     (d.servings || []).forEach(x => { if (x.food === tmp) x.food = real; });
     if (state.modal && state.modal.food === tmp) state.modal.food = real;
     persist();
@@ -523,6 +525,7 @@
     const exPl = x.ex.filter(isPlannedEx).reduce((a, e) => a + (e.cal || 0), 0);
     h += `<section class="card"><h2><span>Exercise${state.date === today() ? `<span class="watch-next">(Next Watch update ${esc(nextWatchRun())})</span>` : ''}</span><small>${x.burned ? fmt(x.burned) + ' cal' : ''}${exPl ? ` · 🕒 ${fmt(exPl)} planned` : ''}</small></h2>
       ${x.ex.map((e, i) => `<div class="entry ${isPlannedEx(e) ? 'planned' : ''}" role="button" data-ex="${i}"><div class="nm"><div>${isPlannedEx(e) ? '🕒 ' : ''}${esc(e.name)}${e.est ? '<span class="est">EST</span>' : ''}</div><small>${e.min ? r0(e.min) + ' min' : ''}${isPlannedEx(e) ? ' · planned' : ` ${esc(e.source || '')}`}</small></div><div class="cal">${fmt(e.cal)}</div>
+        ${e.id ? `<button class="swipe-del" data-swexdel="${i}">Delete</button>` : ''}
         ${state.date <= today() && e.id ? `<button class="ate-btn ${isPlannedEx(e) ? '' : 'on'}" data-exdid="${i}" aria-label="${isPlannedEx(e) ? 'Did it' : 'Done, tap to move back to planned'}">✓</button>` : ''}</div>`).join('') || '<div class="empty">No exercise yet</div>'}
       ${(I().exHidden.get(state.date) || []).length ? `<div class="sub" style="text-align:left;margin:6px 0 0">⌚️ Your watch replaced ${(I().exHidden.get(state.date)).map(e => `planned ${esc(e.name)}${e.min ? ` (${r0(e.min)} min)` : ''}`).join(', ')}</div>` : ''}
       <button class="add-line" data-act="addex">+ Add exercise</button></section>`;
@@ -1024,7 +1027,31 @@
     return `<div class="field"><label>Brand / restaurant</label><input id="ebrand" list="brandlist" value="${esc(f.brand || '')}" placeholder="e.g. McDonald's" autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false" enterkeyhint="done">
       <datalist id="brandlist">${allBrands().map(b => `<option value="${esc(b)}">`).join('')}</datalist>
       <div class="sub" style="text-align:left;margin-top:4px">Applies to every time you log ${esc(f.name)}.</div>
-      ${own ? '<button class="btn big" data-m="brandsave" style="margin-top:8px">Save brand</button>' : ''}</div>`;
+      ${own ? '<button class="btn big" data-m="brandsave" style="margin-top:8px">Save name &amp; brand</button>' : ''}</div>`;
+  }
+  // Name editor for a food: renames the saved food, so every log of it (past and future, both people) follows
+  function nameField(f) {
+    return `<div class="field"><label>Name</label><input id="ename" value="${esc(f.name || '')}" autocomplete="off" autocapitalize="words" enterkeyhint="done">
+      <div class="sub" style="text-align:left;margin-top:4px">Renames it everywhere it's logged.</div></div>`;
+  }
+  function saveName(f) {
+    const inp = $('#ename'); if (!f || !inp) return false;
+    const v = inp.value.trim().replace(/\s+/g, ' ');
+    if (!v || v === String(f.name || '').trim()) return false;
+    f.name = v;
+    state.data.log.forEach(l => { if (l.food === f.id) l.name = v; });
+    enqueue('update', { tab: 'Foods', id: f.id, values: { Name: v } });
+    // every Log row of this food, both people, all history (needs the 2026-11-23 sheet script; skipped quietly before that)
+    enqueue('updateWhere', { tab: 'Log', match: { FoodID: f.id }, values: { Food: v } }, { optional: true });
+    (state.data.meals || []).forEach(ml => {
+      let items; try { items = JSON.parse(ml.items || '[]'); } catch (e) { return; }
+      if (!items.some(x => x.food === f.id)) return;
+      items.forEach(x => { if (x.food === f.id) x.name = v; });
+      ml.items = JSON.stringify(items);
+      enqueue('update', { tab: 'Meals', id: ml.id, values: { 'Items (FoodID x qty)': ml.items } });
+    });
+    persist(); idx = null;
+    return true;
   }
   // Save the typed brand onto the food; matches an existing brand's spelling when only the case differs
   function saveBrand(f) {
@@ -1070,6 +1097,7 @@
     const editable = !!l.id;
     return head(l.name) + `<div class="sheet-body"><div class="big-cal" id="ecal">${fmt(l.cal)}</div><div class="sub">${esc(l.meal)} · ${esc(qtyText(l))}${l.est ? ' · estimate' : ''}</div>
       ${unitInfo(f, true)}
+      ${f ? nameField(f) : editable ? `<div class="field"><label>Name</label><input id="ename" value="${esc(l.name || '')}" autocomplete="off" autocapitalize="words" enterkeyhint="done"></div>` : ''}
       ${f ? brandField(f, !editable) : ''}
       ${editable ? `${f ? amountControls(f, l.qty, l.unit, 'eqty', 'eunit') : `<div class="field"><label>Amount (${esc(l.unit || '')})</label><div class="stepper"><button class="btn ghost" data-step="-1">−</button><input id="eqty" type="number" inputmode="decimal" step="any" value="${esc(+Number(l.qty).toFixed(2))}"><button class="btn ghost" data-step="1">+</button></div></div>`}
         ${f ? gramsField(f, l.qty, 'egram') : ''}
@@ -1177,7 +1205,7 @@
       return head(e.name) + `<div class="sheet-body"><div class="big-cal" id="xbig">${fmt(Number(m.cal) || 0)}</div><div class="sub">${pl ? '🕒 planned · ' : ''}calories burned${e.est ? ' · estimate' : ''}</div>
         ${pl ? '' : exDetails(e)}
         ${state.date <= today() ? (pl ? '<button class="btn big done" data-m="exdid" style="margin-bottom:10px">✓ I did this</button>' : '<button class="btn big ghost" data-m="exreplan" style="margin-bottom:10px">🕒 Move back to planned</button>') : ''}
-        ${pl ? '' : '<h3 class="ex-edit-h">Edit</h3>'}${exForm(m, true)}
+        ${pl ? '' : '<h3 class="ex-edit-h">Edit</h3>'}<div class="field"><label>Name</label><input id="xname" value="${esc(m.newName ?? e.name)}" autocomplete="off" autocapitalize="words" enterkeyhint="done"></div>${exForm(m, true)}
         <button class="btn big" data-m="exupd">Save</button><button class="danger" data-m="exdel">Delete exercise</button></div>`;
     }
     if (m.name) return head(m.name, true) + `<div class="sheet-body">${exForm(m, false)}<button class="btn big" data-m="exsave">${wizOf(m) ? 'Add to plan' : `Add to ${esc(dayLabel(state.date))}`}</button></div>`;
@@ -1361,7 +1389,7 @@
 
   // ---------- swipe left to delete a log entry ----------
   function bindSwipe() {
-    document.querySelectorAll('.entry[data-entry]').forEach(el => {
+    document.querySelectorAll('.entry[data-entry], .entry[data-ex]').forEach(el => {
       if (!el.querySelector('.swipe-del')) return;
       let x0 = 0, y0 = 0, dx = 0, on = false;
       el.addEventListener('touchstart', e => { const t = e.touches[0]; x0 = t.clientX; y0 = t.clientY; dx = 0; on = true; }, { passive: true });
@@ -1379,6 +1407,17 @@
     toast(`Deleted ${l.name}`, 'Undo', () => {
       const copy = { ...l }; delete copy.id; addEntries([copy], l.date, true);
       if (wasPlanned) { const n = state.data.log[state.data.log.length - 1]; markPlanned(n, true); render(); }
+    });
+  }
+
+  function swipeExDelete(i) {
+    const e = (I().exByDate.get(state.date) || [])[i]; if (!e || !e.id) return;
+    state.data.exercise = state.data.exercise.filter(x => x !== e); persist(); idx = null; enqueue('deleteExercise', { id: e.id }); render();
+    toast(`Deleted ${e.name}`, 'Undo', () => {
+      state.data.exercise.push(e); ensureLocalDay(e.date); persist(); idx = null;
+      enqueue('addExercise', { entry: { ...e }, budget: budgetFor(e.date) });
+      enqueue('update', { tab: 'Exercise', id: e.id, values: { Planned: isPlannedEx(e) ? 'Yes' : 'No', Estimate: e.est ? 'Yes' : 'No' } });
+      render();
     });
   }
 
@@ -1427,7 +1466,9 @@
       if (b.classList.contains('swiped') || b._swiped) { b._swiped = false; b.classList.remove('swiped'); return; }
       const l = (I().logByDate.get(state.date) || []).find(x => entryKey(x) === b.dataset.ekey); if (l) openModal({ type: 'entry', entry: l });
     });
-    document.querySelectorAll('[data-ex]').forEach(b => b.onclick = ev => { if (ev.target.closest('[data-exdid]')) return; openModal({ type: 'ex', entry: (I().exByDate.get(state.date) || [])[Number(b.dataset.ex)] }); });
+    document.querySelectorAll('[data-swexdel]').forEach(b => b.onclick = ev => { ev.stopPropagation(); swipeExDelete(Number(b.dataset.swexdel)); });
+    document.querySelectorAll('[data-ex]').forEach(b => b.onclick = ev => { if (ev.target.closest('[data-exdid]') || ev.target.closest('[data-swexdel]')) return;
+      if (b.classList.contains('swiped') || b._swiped) { b._swiped = false; b.classList.remove('swiped'); return; } openModal({ type: 'ex', entry: (I().exByDate.get(state.date) || [])[Number(b.dataset.ex)] }); });
     document.querySelectorAll('[data-exdid]').forEach(b => b.onclick = ev => { ev.stopPropagation();
       const e = (I().exByDate.get(state.date) || [])[Number(b.dataset.exdid)]; if (!e) return;
       const was = isPlannedEx(e); markExPlanned(e, !was); render();
@@ -1561,6 +1602,7 @@
       };
       xmin.oninput = () => upd('min'); xcal.oninput = () => upd('cal');
     }
+    const xname = $('#xname'); if (xname) xname.oninput = () => { m.newName = xname.value; };
     document.querySelectorAll('[data-usda]').forEach(b => b.onclick = () => addUsdaFood(m._usdaList[Number(b.dataset.usda)], m));
     document.querySelectorAll('[data-food]').forEach(b => b.onclick = () => {
       const f = I().foodById.get(b.dataset.food); const d = defaultAmount(f, suggestions(m.slot, state.date).lastQty.get(f.id));
@@ -1693,12 +1735,14 @@
     if (a === 'entrysave') {
       const l = m.entry, qty = Number($('#eqty').value); if (!(qty > 0)) return toast('Enter an amount');
       const f = l.food && I().foodById.get(l.food);
-      saveBrand(f);
+      saveBrand(f); saveName(f);
+      if (!f) { const nv = ($('#ename') ? $('#ename').value : '').trim().replace(/\s+/g, ' '); if (nv) l.name = nv; }
       if (f) Object.assign(l, entryFromFood(f, qty, $('#emeal').value, $('#eunit') ? $('#eunit').value : l.unit), { id: l.id, date: l.date, time: l.time, planned: l.planned });
       else { const ci = $('#ecalin'); l.qty = qty; l.cal = ci ? Number(ci.value) || 0 : l.cal; l.meal = $('#emeal').value; }
       persist(); enqueue('updateLog', { id: l.id, entry: l }); closeModal(); return render();
     }
-    if (a === 'brandsave') { const f = m.entry.food && I().foodById.get(m.entry.food); const ch = saveBrand(f); closeModal(); render(); return toast(ch ? (f.brand ? `Brand set: ${f.brand}` : 'Brand cleared') : 'No change'); }
+    if (a === 'brandsave') { const f = m.entry.food && I().foodById.get(m.entry.food); const nm = saveName(f), ch = saveBrand(f); closeModal(); render();
+      return toast(nm && ch ? 'Name and brand saved' : nm ? `Renamed: ${f.name}` : ch ? (f.brand ? `Brand set: ${f.brand}` : 'Brand cleared') : 'No change'); }
     if (a === 'entryate') { const l = m.entry; markPlanned(l, false); closeModal(); render(); return toast('Confirmed', 'Undo', () => { markPlanned(l, true); render(); }); }
     if (a === 'entryplan') { const l = m.entry; markPlanned(l, true); closeModal(); render(); return toast('Moved back to planned', 'Undo', () => { markPlanned(l, false); render(); }); }
     if (a === 'entrydel') {
@@ -1744,8 +1788,9 @@
     if (a === 'exupd') {
       const e = m.entry, cal = Number(m.cal); if (m.cal === '' || !(cal >= 0)) return toast('Enter calories');
       const changed = cal !== r0(e.cal) || (Number(m.min) || null) !== (e.min || null);
-      e.cal = cal; e.min = Number(m.min) || null; if (changed) e.est = !!m.estField; persist();
-      enqueue('update', { tab: 'Exercise', id: e.id, values: { Minutes: e.min ?? '', Calories: cal, Estimate: e.est ? 'Yes' : 'No' } }); closeModal(); render(); return toast('Saved');
+      const nn = String(m.newName ?? e.name).trim().replace(/\s+/g, ' ') || e.name;
+      e.cal = cal; e.min = Number(m.min) || null; if (changed) e.est = !!m.estField; e.name = nn; persist(); idx = null;
+      enqueue('update', { tab: 'Exercise', id: e.id, values: { Activity: nn, Minutes: e.min ?? '', Calories: cal, Estimate: e.est ? 'Yes' : 'No' } }); closeModal(); render(); return toast('Saved');
     }
     if (a === 'exdid') { const e = m.entry; markExPlanned(e, false); closeModal(); render(); return toast('Done', 'Undo', () => { markExPlanned(e, true); render(); }); }
     if (a === 'exreplan') { const e = m.entry; markExPlanned(e, true); closeModal(); render(); return toast('Moved back to planned', 'Undo', () => { markExPlanned(e, false); render(); }); }
