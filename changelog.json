@@ -2,6 +2,14 @@
  "entries": [
   {
    "date": "2026-11-22",
+   "version": "20261122204600",
+   "items": [
+    "Add food > Meals now has a search box: type a food or restaurant (like turkey or McDonald's) to find saved meals and anything you ate in the past year",
+    "The brand or restaurant now shows next to foods in your day log and in meal lists, e.g. Jimmy Dean on your croissant breakfast"
+   ]
+  },
+  {
+   "date": "2026-11-22",
    "version": "20261122193500",
    "items": [
     "Add food > Meals: recent meals are now newest first, from every meal of the day, and planned meals no longer show there"

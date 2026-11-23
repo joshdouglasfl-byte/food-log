@@ -370,11 +370,16 @@
   }
   // The saved meal whose items match these log entries (same foods), if any
   const mealSig = its => its.map(x => x.food || x.name).sort().join('+');
+  // Brand / restaurant of a log entry or meal item, from its food
+  const brandOf = x => { const f = x && x.food && I().foodById.get(x.food); return (f && f.brand) || ''; };
+  const brandTag = b => b ? `<span class="brand">${esc(b)}</span>` : '';
+  // Search text for a meal: its name plus each item's name and brand
+  const mealText = (name, items) => [name || '', ...items.map(x => (x.name || '') + ' ' + brandOf(x))].join(' ').toLowerCase();
   function savedMealFor(items) { const sig = mealSig(items); return savedMeals().find(g => mealSig(g.items) === sig); }
-  function pastMeals(slot, date) {
+  function pastMeals(slot, date, all) {
     const t = today(), wk = isWeekend(date), groups = new Map();
     for (const l of state.data.log) {
-      if (daysBetween(l.date, t) > 120 || l.date > t || isPlanned(l)) continue;   // eaten meals only
+      if ((!all && daysBetween(l.date, t) > 120) || l.date > t || isPlanned(l)) continue;   // eaten meals only (search: the whole year loaded)
       const k = l.date + '|' + l.meal;
       if (!groups.has(k)) groups.set(k, { date: l.date, meal: l.meal, items: [] });
       groups.get(k).items.push(l);
@@ -390,7 +395,8 @@
     }
     // newest first (Josh, 2026-11-22); within a day, later meals first. Repeats show once, at their latest date.
     const so = x => ALL_SLOTS.indexOf(x.meal);
-    return [...seen.values()].sort((a, b) => String(b.date).localeCompare(String(a.date)) || so(b) - so(a)).slice(0, 30);
+    const out = [...seen.values()].sort((a, b) => String(b.date).localeCompare(String(a.date)) || so(b) - so(a));
+    return all ? out : out.slice(0, 30);
   }
 
   // ---------- gamification ----------
@@ -504,7 +510,7 @@
       const tot = items.reduce((a, l) => a + (l.cal || 0), 0);
       h += `<section class="card"><h2>${slot}<small>${items.length ? fmt(tot) + ' cal' : ''}${items.length && state.macro ? ` · ${r0(items.reduce((a, l) => a + (l[state.macro] || 0), 0))} g ${macroName()}` : ''}</small></h2>
         ${items.map(l => `<div class="entry ${isPlanned(l) ? 'planned' : ''}" role="button" data-entry="${esc(l.id || '')}" data-ekey="${esc(entryKey(l))}">
-          <div class="nm"><div>${isPlanned(l) ? '🕒 ' : ''}${esc(l.name)}${l.est ? '<span class="est">EST</span>' : ''}</div><small>${esc(qtyText(l))}${isPlanned(l) ? ' · planned' : ''}</small></div><div class="cal">${fmt(l.cal)}${macroCell(l)}</div>
+          <div class="nm"><div>${isPlanned(l) ? '🕒 ' : ''}${esc(l.name)}${l.est ? '<span class="est">EST</span>' : ''}</div><small>${brandTag(brandOf(l))}${esc(qtyText(l))}${isPlanned(l) ? ' · planned' : ''}</small></div><div class="cal">${fmt(l.cal)}${macroCell(l)}</div>
           ${l.id ? `<button class="swipe-del" data-swdel="${esc(entryKey(l))}">Delete</button>` : ''}
           ${state.date <= today() && (isPlanned(l) || l.id) ? `<button class="ate-btn ${isPlanned(l) ? '' : 'on'}" data-ate="${esc(entryKey(l))}" aria-label="${isPlanned(l) ? 'Ate it' : 'Eaten, tap to move back to planned'}">✓</button>` : ''}</div>`).join('')}
         ${state.date <= today() && items.filter(isPlanned).length > 1 ? `<button class="add-line" data-confirm="${slot}">✓ Ate all ${items.filter(isPlanned).length} planned items</button>` : ''}
@@ -865,11 +871,16 @@
           <small>${f.brand ? `<span class="brand">${esc(f.brand)}</span>` : ''}${+Number(d.qty).toFixed(2)} ${esc(d.unit)}${ld ? ` · last ${esc(shortDay(ld))}` : ''}</small></div><div class="cal">${fmt(cal)}</div></button>`; }).join('')}
         ${usdaBlock(m, q, foods.length)}</div>`;
     } else if (m.tab === 'meals') {
-      const meals = pastMeals(m.slot, state.date), saved = savedMeals();
-      list = (saved.length ? `<div class="sub" style="text-align:left;margin:4px 0">Saved meals</div>` + saved.map((g, i) => `<button class="pick" data-smeal="${i}"><div class="nm"><div>⭐ ${esc(g.name)}</div>
-        <small>${g.items.length} items · ${esc(g.items.map(x => x.name).join(', '))}</small></div><div class="cal">${fmt(g.items.reduce((a, x) => a + (x.cal || 0), 0))}</div></button>`).join('') + `<div class="sub" style="text-align:left;margin:12px 0 4px">Recent meals</div>` : '') + meals.map((g, i) => `<button class="pick" data-meal="${i}"><div class="nm"><div>${esc(g.items.map(x => x.name).join(', '))}</div>
-        <small>${esc(g.meal)} · ${esc(dayLabel(g.date))}${g.count > 1 ? ` · had ${g.count}×` : ''}</small></div><div class="cal">${fmt(g.items.reduce((a, x) => a + x.cal, 0))}</div></button>`).join('')
-        || '<div class="empty">No past meals yet.</div>';
+      const q = (m.mq || '').trim().toLowerCase(), toks = q.split(/\s+/).filter(Boolean);
+      const hit = (name, items) => { const t = mealText(name, items); return toks.every(k => t.includes(k)); };
+      const saved = savedMeals().filter(g => !toks.length || hit(g.name, g.items));
+      const meals = pastMeals(m.slot, state.date, toks.length > 0).filter(g => !toks.length || hit('', g.items)).slice(0, 60);
+      const brands = its => { const b = [...new Set(its.map(brandOf).filter(Boolean))]; return b.map(brandTag).join(''); };
+      const res = (saved.length ? `<div class="sub" style="text-align:left;margin:4px 0">Saved meals</div>` + saved.map((g, i) => `<button class="pick" data-smeal="${i}"><div class="nm"><div>⭐ ${esc(g.name)}</div>
+        <small>${brands(g.items)}${g.items.length} items · ${esc(g.items.map(x => x.name).join(', '))}</small></div><div class="cal">${fmt(g.items.reduce((a, x) => a + (x.cal || 0), 0))}</div></button>`).join('') + (meals.length ? `<div class="sub" style="text-align:left;margin:12px 0 4px">${toks.length ? 'Past meals' : 'Recent meals'}</div>` : '') : '') + meals.map((g, i) => `<button class="pick" data-meal="${i}"><div class="nm"><div>${esc(g.items.map(x => x.name).join(', '))}</div>
+        <small>${brands(g.items)}${esc(g.meal)} · ${esc(dayLabel(g.date))}${String(g.date).slice(0, 4) !== today().slice(0, 4) ? ' ' + String(g.date).slice(0, 4) : ''}${g.count > 1 ? ` · had ${g.count}×` : ''}</small></div><div class="cal">${fmt(g.items.reduce((a, x) => a + x.cal, 0))}</div></button>`).join('')
+        || `<div class="empty">${toks.length ? 'No meals match. Search looks back a year.' : 'No past meals yet.'}</div>`;
+      list = `<input id="q" class="search" type="search" enterkeyhint="search" placeholder="Search meals (e.g. turkey)" value="${esc(m.mq || '')}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"><div id="addres">${res}</div>`;
       m._meals = meals; m._saved = saved;
     } else {
       return head(addTitle(m)) + `<div class="sheet-body">${seg}${quickForm(m)}</div>`;
@@ -1507,7 +1518,7 @@
     const xi = $('#xtra'); if (xi) xi.onchange = () => { if (Number(xi.value) > 0) { m.extra = Number(xi.value); renderModal(); } };
     document.querySelectorAll('[data-mslot]').forEach(b => b.onclick = () => { m.slot = b.dataset.mslot; renderModal(); });
     document.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { m.tab = b.dataset.tab; renderModal(); });
-    const q = $('#q'); if (q) q.oninput = () => { m.q = q.value; clearTimeout(searchT); searchT = setTimeout(() => { if (state.modal === m) renderModal(); }, 250); };
+    const q = $('#q'); if (q) q.oninput = () => { if (m.tab === 'meals') m.mq = q.value; else m.q = q.value; clearTimeout(searchT); searchT = setTimeout(() => { if (state.modal === m) renderModal(); }, 250); };
     const qn = $('#qname'); if (qn) qn.oninput = () => { m.qname = qn.value; };
     const xq = $('#xq'); if (xq) xq.oninput = () => { m.q = xq.value; clearTimeout(searchT); searchT = setTimeout(() => { if (state.modal !== m) return; renderModal(); const n = $('#xq'); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }, 200); };
     const pickEx = name => { state.modal = { type: 'ex', name, min: '', cal: '', planned: state.date > today(), back: m }; renderModal(); };
