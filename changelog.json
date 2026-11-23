@@ -1,6 +1,14 @@
 {
  "entries": [
   {
+   "date": "2026-11-23",
+   "version": "20261123124500",
+   "items": [
+    "Tap a food in your day log to set or change its brand or restaurant (e.g. McDonald's). It suggests brands you've used, and the change applies every time you log that food",
+    "Filled in brands on about 45 more of your foods where the name made it obvious (Big Mac and Quarter Pounder are McDonald's, IHOP omelettes, Premier Protein, and more)"
+   ]
+  },
+  {
    "date": "2026-11-22",
    "version": "20261122205500",
    "items": [

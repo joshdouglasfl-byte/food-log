@@ -81,6 +81,7 @@
     state.queue.forEach(q => (q.body.entries || []).forEach(e => { if (e.food === tmp) e.food = real; }));
     state.queue.forEach(q => { if (q.body.entry && q.body.entry.food === tmp) q.body.entry.food = real; });
     state.queue.forEach(q => (q.body.rows || []).forEach(r => { if (r.FoodID === tmp) r.FoodID = real; }));
+    state.queue.forEach(q => { if (q.action === 'update' && q.body.tab === 'Foods' && q.body.id === tmp) q.body.id = real; });
     (d.servings || []).forEach(x => { if (x.food === tmp) x.food = real; });
     if (state.modal && state.modal.food === tmp) state.modal.food = real;
     persist();
@@ -1017,7 +1018,25 @@
     const calPerGram = g.cal / g.per / WEIGHT_G[String(g.unit).toLowerCase()];
     return (f.cal / f.per) / calPerGram;
   }
-  function unitInfo(f) {
+  // Brand / restaurant editor for a food (on the food, so every log of it follows). Suggestions = brands already used.
+  const allBrands = () => [...new Set(state.data.foods.map(x => String(x.brand || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  function brandField(f, own) {
+    return `<div class="field"><label>Brand / restaurant</label><input id="ebrand" list="brandlist" value="${esc(f.brand || '')}" placeholder="e.g. McDonald's" autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false" enterkeyhint="done">
+      <datalist id="brandlist">${allBrands().map(b => `<option value="${esc(b)}">`).join('')}</datalist>
+      <div class="sub" style="text-align:left;margin-top:4px">Applies to every time you log ${esc(f.name)}.</div>
+      ${own ? '<button class="btn big" data-m="brandsave" style="margin-top:8px">Save brand</button>' : ''}</div>`;
+  }
+  // Save the typed brand onto the food; matches an existing brand's spelling when only the case differs
+  function saveBrand(f) {
+    const inp = $('#ebrand'); if (!f || !inp) return false;
+    let v = inp.value.trim().replace(/\s+/g, ' ');
+    const same = allBrands().find(b => b.toLowerCase() === v.toLowerCase()); if (same) v = same;
+    if (v === String(f.brand || '').trim()) return false;
+    f.brand = v; persist();
+    enqueue('update', { tab: 'Foods', id: f.id, values: { 'Brand / restaurant': v } });
+    return true;
+  }
+  function unitInfo(f, noBrand) {
     if (!f) return '';
     const gpu = gramsPerUnit(f), isG = String(f.unit).toLowerCase().startsWith('gram');
     // per 100 g for gram foods, per 1 unit otherwise
@@ -1025,7 +1044,7 @@
     const head = isG ? 'Per 100 g' : `Per 1 ${esc(f.unit)}${gpu ? ` (≈ ${gpu >= 10 ? r0(gpu) : Math.round(gpu * 10) / 10} g)` : ''}`;
     const m = (v, lab) => v == null ? '' : ` · ${lab} ${Math.round(v * k * 10) / 10} g`;
     const line2 = gpu && !isG ? `<br>${(Math.round(f.cal / f.per / gpu * 100) / 100).toFixed(2)} cal per gram` : '';
-    return `<div class="unit-info"><b>${head}:</b> ${fmt(f.cal * k)} cal${m(f.pro, 'protein')}${m(f.fib, 'fiber')}${m(f.carb, 'carbs')}${m(f.fat, 'fat')}${line2}${f.brand ? `<br>${esc(f.brand)}` : ''}</div>`;
+    return `<div class="unit-info"><b>${head}:</b> ${fmt(f.cal * k)} cal${m(f.pro, 'protein')}${m(f.fib, 'fiber')}${m(f.carb, 'carbs')}${m(f.fat, 'fat')}${line2}${f.brand && !noBrand ? `<br>${esc(f.brand)}` : ''}</div>`;
   }
   const macroText = l => ['pro', 'fib', 'carb', 'fat'].some(k => l[k] != null)
     ? `Protein ${r0(l.pro || 0)} g · Fiber ${r0(l.fib || 0)} g · Carbs ${r0(l.carb || 0)} g · Fat ${r0(l.fat || 0)} g` : '';
@@ -1050,7 +1069,8 @@
     const l = m.entry, f = l.food && I().foodById.get(l.food);
     const editable = !!l.id;
     return head(l.name) + `<div class="sheet-body"><div class="big-cal" id="ecal">${fmt(l.cal)}</div><div class="sub">${esc(l.meal)} · ${esc(qtyText(l))}${l.est ? ' · estimate' : ''}</div>
-      ${unitInfo(f)}
+      ${unitInfo(f, true)}
+      ${f ? brandField(f, !editable) : ''}
       ${editable ? `${f ? amountControls(f, l.qty, l.unit, 'eqty', 'eunit') : `<div class="field"><label>Amount (${esc(l.unit || '')})</label><div class="stepper"><button class="btn ghost" data-step="-1">−</button><input id="eqty" type="number" inputmode="decimal" step="any" value="${esc(+Number(l.qty).toFixed(2))}"><button class="btn ghost" data-step="1">+</button></div></div>`}
         ${f ? gramsField(f, l.qty, 'egram') : ''}
         <div class="sub" id="emac">${macroText(l)}</div>
@@ -1673,10 +1693,12 @@
     if (a === 'entrysave') {
       const l = m.entry, qty = Number($('#eqty').value); if (!(qty > 0)) return toast('Enter an amount');
       const f = l.food && I().foodById.get(l.food);
+      saveBrand(f);
       if (f) Object.assign(l, entryFromFood(f, qty, $('#emeal').value, $('#eunit') ? $('#eunit').value : l.unit), { id: l.id, date: l.date, time: l.time, planned: l.planned });
       else { const ci = $('#ecalin'); l.qty = qty; l.cal = ci ? Number(ci.value) || 0 : l.cal; l.meal = $('#emeal').value; }
       persist(); enqueue('updateLog', { id: l.id, entry: l }); closeModal(); return render();
     }
+    if (a === 'brandsave') { const f = m.entry.food && I().foodById.get(m.entry.food); const ch = saveBrand(f); closeModal(); render(); return toast(ch ? (f.brand ? `Brand set: ${f.brand}` : 'Brand cleared') : 'No change'); }
     if (a === 'entryate') { const l = m.entry; markPlanned(l, false); closeModal(); render(); return toast('Confirmed', 'Undo', () => { markPlanned(l, true); render(); }); }
     if (a === 'entryplan') { const l = m.entry; markPlanned(l, true); closeModal(); render(); return toast('Moved back to planned', 'Undo', () => { markPlanned(l, false); render(); }); }
     if (a === 'entrydel') {
