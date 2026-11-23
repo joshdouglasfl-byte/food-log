@@ -119,7 +119,7 @@ def run(pw, w, h, tag):
     check(e.locator('.brand').count() and "McDonald" in e.locator('.brand').inner_text(), f'{tag}: brand tag on day log entry')
     oat = page.locator('.entry', has_text='Oatmeal').first
     check(oat.locator('.brand').count() == 0, f'{tag}: no tag when brand unknown')
-    page.screenshot(path=f'{OUT}/meals_{tag}_day.png')
+    page.locator('.entry', has_text='McDouble').first.evaluate("el => el.scrollIntoView({block: 'center'})"); page.wait_for_timeout(200); page.screenshot(path=f'{OUT}/meals_{tag}_day.png')
     page.click('[data-addslot=Dinner]'); page.wait_for_timeout(200); page.click('[data-tab=meals]'); page.wait_for_timeout(200)
     check(page.locator('#addres .pick').count() > 0, f'{tag}: meals list shows')
     check('Turkey Sandwich, Black beans' not in page.locator('#addres').inner_text(), f'{tag}: old meal hidden without search')

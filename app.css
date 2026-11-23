@@ -237,7 +237,8 @@ input, textarea, select { -webkit-user-select: text; user-select: text; }
 .tabs .i { position: relative; } .tab-dot { position: absolute; top: 0; right: -4px; }
 .watch-copy { display: flex; flex-wrap: wrap; gap: 8px; }
 .watch-copy .btn { flex: 1 1 140px; }
-.brand { display: inline-block; margin-right: 6px; padding: 1px 7px; border-radius: 9px; background: var(--line); color: var(--muted); font-size: .72rem; font-weight: 600; vertical-align: 1px; }
+.brand { display: inline; margin-right: 4px; color: var(--muted); font-weight: 600; }
+.brand::after { content: " ·"; font-weight: 400; }
 .saved-meal { color: var(--muted); font-size: .9rem; padding: 8px 0; }
 .entry { position: relative; }
 .swipe-del { display: none; border: 0; border-radius: 10px; background: #d9534f; color: #fff; font-weight: 700; padding: 10px 14px; font-size: .95rem; }

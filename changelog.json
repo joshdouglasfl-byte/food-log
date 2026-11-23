@@ -2,6 +2,13 @@
  "entries": [
   {
    "date": "2026-11-23",
+   "version": "20261123124100",
+   "items": [
+    "The brand or restaurant next to a food is now plain bold text with no grey background, so it's easier to read"
+   ]
+  },
+  {
+   "date": "2026-11-23",
    "version": "20261123124500",
    "items": [
     "Tap a food in your day log to set or change its brand or restaurant (e.g. McDonald's). It suggests brands you've used, and the change applies every time you log that food",
