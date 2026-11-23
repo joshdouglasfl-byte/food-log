@@ -2,6 +2,13 @@
  "entries": [
   {
    "date": "2026-11-22",
+   "version": "20261122193500",
+   "items": [
+    "Add food > Meals: recent meals are now newest first, from every meal of the day, and planned meals no longer show there"
+   ]
+  },
+  {
+   "date": "2026-11-22",
    "version": "20261122190500",
    "items": [
     "Apple Watch workouts no longer double up with workouts already logged from Workout Buddy or your old Lose It! history"

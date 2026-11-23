@@ -374,7 +374,7 @@
   function pastMeals(slot, date) {
     const t = today(), wk = isWeekend(date), groups = new Map();
     for (const l of state.data.log) {
-      if (daysBetween(l.date, t) > 120) continue;
+      if (daysBetween(l.date, t) > 120 || l.date > t || isPlanned(l)) continue;   // eaten meals only
       const k = l.date + '|' + l.meal;
       if (!groups.has(k)) groups.set(k, { date: l.date, meal: l.meal, items: [] });
       groups.get(k).items.push(l);
@@ -388,7 +388,9 @@
       if (!cur) seen.set(sig, { ...g, score: w, count: 1 });
       else { cur.score += w; cur.count++; if (g.date > cur.date) { cur.date = g.date; cur.items = g.items; cur.meal = g.meal; } }
     }
-    return [...seen.values()].sort((a, b) => b.score - a.score).slice(0, 30);
+    // newest first (Josh, 2026-11-22); within a day, later meals first. Repeats show once, at their latest date.
+    const so = x => ALL_SLOTS.indexOf(x.meal);
+    return [...seen.values()].sort((a, b) => String(b.date).localeCompare(String(a.date)) || so(b) - so(a)).slice(0, 30);
   }
 
   // ---------- gamification ----------
