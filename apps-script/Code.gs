@@ -28,6 +28,8 @@ function doPost(e) {
 // ---------- keys ----------
 const PEOPLE = ['Josh', 'Michelle'];
 const APP_URL = 'https://joshdouglasfl-byte.github.io/food-log/';
+// The deployed web app (same as config.js). Not ScriptApp.getService().getUrl(): run from the editor it gives the /dev test URL.
+const EXEC_URL = 'https://script.google.com/macros/s/AKfycbx1Z0lkyHaiQ8n0kCC9TMqATaGZDWtippwscqGsdmSHhXTvDwDencxqDCjdFlsaqbp5Ug/exec';
 function keyMap_(name) {
   try { return JSON.parse(PropertiesService.getScriptProperties().getProperty(name) || '{}'); } catch (e) { return {}; }
 }
@@ -49,7 +51,7 @@ function newKey_() { return (Utilities.getUuid() + Utilities.getUuid()).replace(
 /** Run from the editor: adds a fresh app key and HAE key for each person (old keys keep working) and logs the new links. */
 function newKeys() {
   const props = PropertiesService.getScriptProperties(), t = new Date().toISOString();
-  const keys = keyMap_('KEYS'), hae = keyMap_('HAE_KEYS'), url = ScriptApp.getService().getUrl();
+  const keys = keyMap_('KEYS'), hae = keyMap_('HAE_KEYS'), url = EXEC_URL;
   PEOPLE.forEach(person => {
     const a = newKey_(), h = newKey_();
     keys[a] = { p: person, t: t }; hae[h] = { p: person, t: t };
