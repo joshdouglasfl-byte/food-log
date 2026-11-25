@@ -77,8 +77,9 @@ CALLS = []; PLANS = []; SLOW_COACH = [False]
 NOTES = [dict(Date=D(-1), Time='3:00', Person='Josh', From='Dietitian', Message='Old note, already read.', Status='Read', EntryID='CN1'),
          dict(Date=D(0), Time='3:00', Person='Josh', From='Dietitian', Message='Macros for the last 7 days: protein short. Go get it!', Status='New', EntryID='CN2')]
 def handle(route, request):
-    if request.method == 'GET':
-        person = re.search(r'person=(\w+)', request.url).group(1)
+    _b = json.loads(request.post_data or '{}') if request.method == 'POST' else {}
+    if request.method == 'GET' or _b.get('action') == 'bootstrap':   # bootstrap is a POST since 2026-11-24
+        person = _b.get('person') or re.search(r'person=(\w+)', request.url).group(1)
         return route.fulfill(status=200, content_type='application/json', body=json.dumps(boot(person)))
     body = json.loads(request.post_data or '{}'); CALLS.append(body)
     a = body.get('action'); res = {'ok': True}

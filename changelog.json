@@ -1,6 +1,16 @@
 {
  "entries": [
   {
+   "date": "2026-11-24",
+   "version": "20261124200000",
+   "items": [
+    "Safer setup links: your access key now stays on your phone instead of riding in the web address, and it's never sent to other sites",
+    "The barcode scanner now loads from the app itself instead of an outside site",
+    "A page now warns you if it was opened with someone else's link",
+    "The Apple Watch card no longer has a copy button: the watch link now comes from Josh's new keys"
+   ]
+  },
+  {
    "date": "2026-11-23",
    "version": "20261123173000",
    "items": [

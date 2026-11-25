@@ -4,7 +4,7 @@ Lightweight calorie log for Josh (and later Michelle), replacing Lose It!. Follo
 
 - App: static files on GitHub Pages. `josh/` and `michelle/` are per-person entry pages; shared code in `app.js`, `app.css`, `config.js`.
 - Data: Google Sheet "Food_Log" (id `1FQtRjM5_zUAw83Yoq-bi9l8X_Pwzqi9OX6lyKZrub0w`), tabs Profiles, Foods, Meals, Log, Exercise, Days, Body, Plan, Feedback, Coach Notes, Exercises, Servings, Day Plans.
-- API: `apps-script/Code.gs`, deployed by Josh as a web app. Prefer the generic actions (`read`, `append`, `update`, `delete`) for new features so the script doesn't need redeploying.
+- API: `apps-script/Code.gs`, **bound to the Food_Log sheet** (open the sheet > Extensions > Apps Script; Josh confirmed 2026-11-24, there is no standalone project), deployed by Josh as a web app. Prefer the generic actions (`read`, `append`, `update`, `delete`) for new features so the script doesn't need redeploying.
 - Every push: bump `version.json` so open apps reload to the new version.
 - Test before pushing: `python3 -I ../fltest/test_app.py` style Playwright run with the API stubbed via page.route.
 
@@ -136,3 +136,18 @@ Done: phases 1-2, plan view (Mifflin-St Jeor x1.2 + manual adjustment + weekly g
 - Queue jobs can be `{optional: true}` (`enqueue(a, b, {optional:true})`): on a server refusal they're set aside at once with no error shown, so updateWhere before the redeploy fails quietly (Foods/this entry still rename; older Log rows keep the old name in the sheet).
 - Exercise rename (Josh's choice: this entry only): `#xname` in the edit sheet, saved by `exupd` as Activity. Library (Exercises tab) untouched.
 - Test: `tests/test_rename.py`.
+
+## Security (2026-11-24; needs one redeploy + new keys)
+Review findings adopted by Josh; same model in Workout Buddy.
+- Keys live only in Script Properties: `KEYS` {key: {p: person, t: made}} for the app, `HAE_KEYS` for Health Auto Export (haeWorkouts only). The person always comes from the key; the request's `person` is ignored. Old shared `API_KEY` still works until `dropOldKeys()` sets `LEGACY_OFF`. No key configured = every call refused (was: open).
+- Generic actions only reach `GENERIC_TABS` (read/append/update/delete/updateWhere lists in Code.gs); add a tab there when a feature needs one (that is a redeploy). Per-person tabs: reads filtered to the caller, update/delete only on the caller's rows, appends stamped with the caller, Person never changeable. Only Day Plans may be created by append. `updateWhere` = FoodID -> Food rename only. `readWB` = the caller's rows.
+- Formulas: a value must be `{f: '=...'}`; plain text starting with = + @ (or - not before a number) is stored with a leading apostrophe; IMPORT*/IMAGE/HYPERLINK/WEBSERVICE refused.
+- App: key from `#k=` (old `?k=` rewritten once), dropped from the address in the Home Screen app; bootstrap is a POST; `<meta name="referrer" content="no-referrer">` on every page; bootstrap echoes `person` and the page refuses another person's key. Barcode reader self-hosted in `vendor/zxing-wasm-3.1.7/` (npm tarball, sha256 reader.js 1c61f43a…, wasm 33c8c50b…); no CDN code at runtime. Test: `tests/test_security.py`.
+- Apple Watch card's copy button removed: HAE URLs carry HAE keys and come from `newKeys()`'s log.
+
+### Rotate keys (also the first-time setup)
+1. Sheet > Extensions > Apps Script > select `newKeys` > Run. View > Logs (Execution log) shows each person's setup link and Health Auto Export URL.
+2. On each device: open that person's setup link in Safari, delete the old Home Screen icon, Share > Add to Home Screen.
+3. On each iPhone: Health Auto Export > the REST API automation > replace the URL with that person's new HAE URL.
+4. When every device works: Run `dropOldKeys` (keeps each person's newest keys, turns the old shared key off).
+5. The Execution log is visible only to Josh and expires on its own. Never screenshot or text the links.

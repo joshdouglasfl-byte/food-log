@@ -75,8 +75,9 @@ def boot(person):
 
 CALLS = []; PLANS = []
 def handle(route, request):
-    if request.method == 'GET':
-        person = re.search(r'person=(\w+)', request.url).group(1)
+    _b = json.loads(request.post_data or '{}') if request.method == 'POST' else {}
+    if request.method == 'GET' or _b.get('action') == 'bootstrap':   # bootstrap is a POST since 2026-11-24
+        person = _b.get('person') or re.search(r'person=(\w+)', request.url).group(1)
         return route.fulfill(status=200, content_type='application/json', body=json.dumps(boot(person)))
     body = json.loads(request.post_data or '{}'); CALLS.append(body)
     a = body.get('action'); res = {'ok': True}

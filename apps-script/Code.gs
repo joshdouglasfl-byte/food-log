@@ -1,7 +1,13 @@
 /**
- * Food Log API — bound to the Food_Log Google Sheet.
- * Deploy: Extensions > Apps Script, paste this file, set Script Property API_KEY,
- * Deploy > New deployment > Web app (Execute as: Me, Who has access: Anyone).
+ * Food Log API — bound to the Food_Log Google Sheet (open the sheet > Extensions > Apps Script).
+ * Deploy > Manage deployments > edit > New version (Execute as: Me, Who has access: Anyone).
+ *
+ * Keys (never in this repo): Script Properties, made by running newKeys() from the editor.
+ *   KEYS      {"<key>": {"p": "Josh", "t": "<made>"}}  app keys; the person comes from the key, not the request
+ *   HAE_KEYS  same shape; Health Auto Export only (haeWorkouts), nothing else
+ *   API_KEY   old shared key, still accepted until dropOldKeys() runs (sets LEGACY_OFF)
+ * Rotate: newKeys() -> open the new links on each device / paste new HAE URLs -> dropOldKeys().
+ * No key configured = every call refused.
  */
 
 const TABS = { profiles: 'Profiles', foods: 'Foods', meals: 'Meals', log: 'Log',
@@ -19,9 +25,70 @@ function doPost(e) {
   return handle_(body);
 }
 
+// ---------- keys ----------
+const PEOPLE = ['Josh', 'Michelle'];
+const APP_URL = 'https://joshdouglasfl-byte.github.io/food-log/';
+function keyMap_(name) {
+  try { return JSON.parse(PropertiesService.getScriptProperties().getProperty(name) || '{}'); } catch (e) { return {}; }
+}
+/** -> {person, hae, legacy} or null. Fails closed: no key configured means nobody gets in. */
+function auth_(p) {
+  const k = String(p.key || ''); if (!k) return null;
+  const props = PropertiesService.getScriptProperties();
+  const app = keyMap_('KEYS')[k];
+  if (app && PEOPLE.indexOf(app.p) >= 0) return { person: app.p, hae: false, legacy: false };
+  const hae = keyMap_('HAE_KEYS')[k];
+  if (hae && PEOPLE.indexOf(hae.p) >= 0) return { person: hae.p, hae: true, legacy: false };
+  const old = props.getProperty('API_KEY');
+  if (old && !props.getProperty('LEGACY_OFF') && k === old) {
+    return PEOPLE.indexOf(p.person) >= 0 ? { person: p.person, hae: false, legacy: true } : { person: null, hae: false, legacy: true };
+  }
+  return null;
+}
+function newKey_() { return (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, ''); }   // 64 hex chars
+/** Run from the editor: adds a fresh app key and HAE key for each person (old keys keep working) and logs the new links. */
+function newKeys() {
+  const props = PropertiesService.getScriptProperties(), t = new Date().toISOString();
+  const keys = keyMap_('KEYS'), hae = keyMap_('HAE_KEYS'), url = ScriptApp.getService().getUrl();
+  PEOPLE.forEach(person => {
+    const a = newKey_(), h = newKey_();
+    keys[a] = { p: person, t: t }; hae[h] = { p: person, t: t };
+    Logger.log(`${person} setup link (open on each of ${person}'s devices, then Add to Home Screen):\n${APP_URL}${person.toLowerCase()}/#k=${a}`);
+    Logger.log(`${person} Health Auto Export URL (paste into the REST API automation on ${person}'s iPhone):\n${url}?source=hae&person=${person}&key=${h}`);
+  });
+  props.setProperty('KEYS', JSON.stringify(keys)); props.setProperty('HAE_KEYS', JSON.stringify(hae));
+}
+/** Run from the editor once every device uses the new links: keeps only each person's newest keys and turns the old shared key off. */
+function dropOldKeys() {
+  const props = PropertiesService.getScriptProperties();
+  ['KEYS', 'HAE_KEYS'].forEach(name => {
+    const m = keyMap_(name), newest = {};
+    Object.keys(m).forEach(k => { const o = m[k]; if (!newest[o.p] || o.t > m[newest[o.p]].t) newest[o.p] = k; });
+    const keep = {}; Object.keys(newest).forEach(person => { keep[newest[person]] = m[newest[person]]; });
+    props.setProperty(name, JSON.stringify(keep));
+  });
+  props.deleteProperty('API_KEY'); props.setProperty('LEGACY_OFF', '1');
+  Logger.log('Old keys removed. Kept: ' + Object.values(keyMap_('KEYS')).map(o => o.p + ' ' + o.t).join(', '));
+}
+
+// ---------- what each action may touch ----------
+// Generic actions only reach these tabs. Per-person tabs (with a Person column) are limited to the caller's rows.
+const GENERIC_TABS = {
+  read: ['Exercise', 'Exercises', 'Log', 'Coach Notes', 'Servings', 'Body', 'Day Plans'],
+  append: ['Servings', 'Meals', 'Exercises', 'Feedback', 'Day Plans'],
+  update: ['Coach Notes', 'Foods', 'Meals', 'Exercise', 'Log', 'Day Plans'],
+  delete: ['Meals', 'Day Plans'],
+  updateWhere: ['Log']
+};
+const CREATABLE_TABS = ['Day Plans'];   // append may create these if missing
+
 function handle_(p) {
-  const key = PropertiesService.getScriptProperties().getProperty('API_KEY');
-  if (key && p.key !== key) return out_({ ok: false, error: 'unauthorized' });
+  const a = auth_(p);
+  if (!a) return out_({ ok: false, error: 'unauthorized' });
+  if (a.hae !== (p.action === 'haeWorkouts') && !a.legacy) return out_({ ok: false, error: 'unauthorized' });
+  if (!a.person) return out_({ ok: false, error: 'person required' });
+  p.person = a.person;   // never trust a person sent by the caller
+  if (GENERIC_TABS[p.action] && GENERIC_TABS[p.action].indexOf(p.tab) < 0) return out_({ ok: false, error: 'tab not allowed' });
   const lock = LockService.getScriptLock();
   try {
     if (p.action !== 'bootstrap' && p.action !== 'foodSearch') lock.waitLock(20000);   // search reads nothing from the sheet
@@ -72,6 +139,16 @@ function col_(header, name) {
   const i = header.indexOf(name); if (i < 0) throw new Error('missing column ' + name); return i;
 }
 function newId_(prefix) { return prefix + Utilities.getUuid().slice(0, 8); }
+/** Row r (1-based) belongs to person, or the tab has no Person column (shared tab). Blank Person counts as Josh. */
+function ownsRow_(s, r, person) {
+  const pi = gHeader_(s).indexOf('Person'); if (pi < 0) return true;
+  return (String(s.getRange(r, pi + 1).getValue()).trim() || 'Josh') === person;
+}
+/** Typed text is stored as text: a value starting with = + @ (or - not followed by a number) would otherwise run as a formula. */
+function safe_(v) {
+  return typeof v === 'string' && /^(=|\+|@|-(?![\d.]))/.test(v) ? "'" + v : v;
+}
+const safeRow_ = row => row.map(safe_);
 
 /** Ensure Log/Exercise have an ID column for app-written rows. */
 function ensureIdCol_(name, colName) {
@@ -139,7 +216,7 @@ function bootstrap_(person) {
     date: ymd_(r[0]), target: num_(r[2]), meals: r[3], notes: r[4]
   }));
 
-  return { ok: true, profile, foods, meals, log, exercise, days, body, plan, serverTime: new Date().toISOString() };
+  return { ok: true, person, profile, foods, meals, log, exercise, days, body, plan, serverTime: new Date().toISOString() };
 }
 function num_(v) { return v === '' || v === null || v === undefined || isNaN(Number(v)) ? null : Number(v); }
 
@@ -184,7 +261,7 @@ function addLog_(p) {
     const row = [toDate_(e.date), e.time || '', p.person, e.food || '', e.meal, e.name, e.qty, e.unit, e.cal,
       e.pro, e.fib, e.carb, e.fat, e.est ? 'Yes' : 'No'];
     while (row.length < c - 1) row.push('');
-    row.push(id); return row;
+    row.push(id); return safeRow_(row);
   });
   if (!vals.length) return { ok: true, ids };
   // skip entries already written (retries from the offline queue)
@@ -201,16 +278,16 @@ function addLog_(p) {
 
 function updateLog_(p) {
   const r = findRowById_(TABS.log, 'EntryID', p.id);
-  if (!r) return { ok: false, error: 'not found' };
+  if (!r || !ownsRow_(sh_(TABS.log), r, p.person)) return { ok: false, error: 'not found' };
   const e = p.entry, s = sh_(TABS.log);
-  s.getRange(r, 5, 1, 10).setValues([[e.meal, e.name, e.qty, e.unit, e.cal, e.pro, e.fib, e.carb, e.fat, e.est ? 'Yes' : 'No']]);
-  if (e.food !== undefined) s.getRange(r, 4).setValue(e.food);
+  s.getRange(r, 5, 1, 10).setValues([safeRow_([e.meal, e.name, e.qty, e.unit, e.cal, e.pro, e.fib, e.carb, e.fat, e.est ? 'Yes' : 'No'])]);
+  if (e.food !== undefined) s.getRange(r, 4).setValue(safe_(e.food));
   return { ok: true };
 }
 
 function deleteLog_(p) {
   const r = findRowById_(TABS.log, 'EntryID', p.id);
-  if (r) sh_(TABS.log).deleteRow(r);
+  if (r && ownsRow_(sh_(TABS.log), r, p.person)) sh_(TABS.log).deleteRow(r);
   return { ok: true };
 }
 
@@ -222,8 +299,8 @@ function addFood_(p) {
   const max = ids.reduce((m, x) => Math.max(m, Number(String(x).slice(1)) || 0), 0);
   const id = 'F' + String(max + 1).padStart(5, '0');
   const r = s.getLastRow() + 1;
-  s.getRange(r, 1, 1, 15).setValues([[id, f.name, f.brand || '', f.unit, f.per || 1, f.cal, f.pro, f.fib, f.carb, f.fat,
-    f.barcode || '', f.source || 'App', f.est ? 'Yes' : 'No', 0, '']]);
+  s.getRange(r, 1, 1, 15).setValues([safeRow_([id, f.name, f.brand || '', f.unit, f.per || 1, f.cal, f.pro, f.fib, f.carb, f.fat,
+    f.barcode || '', f.source || 'App', f.est ? 'Yes' : 'No', 0, ''])]);
   // Times used / Last used are plain values (formulas slowed the sheet); the app works these out from Log.
   return { ok: true, id };
 }
@@ -237,7 +314,7 @@ function addExercise_(p) {
   while (row.length < c - 1) row.push('');
   row.push(id);
   const r = s.getLastRow() + 1;
-  s.getRange(r, 1, 1, row.length).setValues([row]); s.getRange(r, 1).setNumberFormat('yyyy-mm-dd');
+  s.getRange(r, 1, 1, row.length).setValues([safeRow_(row)]); s.getRange(r, 1).setNumberFormat('yyyy-mm-dd');
   ensureDay_(p.person, e.date, p.budget);
   return { ok: true, id };
 }
@@ -341,7 +418,7 @@ function haeLog_(person, n, added, notes) {
     const ss = SpreadsheetApp.getActive();
     const s = ss.getSheetByName('HAE_Log') || ss.insertSheet('HAE_Log');
     if (s.getLastRow() === 0) s.appendRow(['Received', 'Person', 'Workouts', 'Added', 'Name | start | end | duration | kcal']);
-    s.appendRow([Utilities.formatDate(new Date(), 'America/New_York', 'yyyy-MM-dd HH:mm:ss'), person, n, added, notes.join('\n').slice(0, 45000)]);
+    s.appendRow(safeRow_([Utilities.formatDate(new Date(), 'America/New_York', 'yyyy-MM-dd HH:mm:ss'), person, n, added, notes.join('\n').slice(0, 45000)]));
     if (s.getLastRow() > 201) s.deleteRows(2, s.getLastRow() - 201);
   } catch (e) {}
 }
@@ -362,7 +439,7 @@ function haeKcal_(v) {
 
 function deleteExercise_(p) {
   const r = findRowById_(TABS.exercise, 'EntryID', p.id);
-  if (r) sh_(TABS.exercise).deleteRow(r);
+  if (r && ownsRow_(sh_(TABS.exercise), r, p.person)) sh_(TABS.exercise).deleteRow(r);
   return { ok: true };
 }
 
@@ -373,7 +450,7 @@ function saveSettings_(p) {
   if (i < 0) return { ok: false, error: 'no profile' };
   Object.entries(p.settings || {}).forEach(([k, v]) => {
     const c = P.header.indexOf(k);
-    if (c >= 0) P.sheet.getRange(i + 2, c + 1).setValue(v);
+    if (c >= 0 && k !== 'Person') P.sheet.getRange(i + 2, c + 1).setValue(safe_(v));
   });
   return { ok: true };
 }
@@ -392,7 +469,7 @@ function addFeedback_(p) {
   const ids = s.getRange(1, 7, s.getLastRow(), 1).getValues().flat();
   if (ids.indexOf(f.id) >= 0) return { ok: true };
   const r = s.getLastRow() + 1;
-  s.getRange(r, 1, 1, 7).setValues([[toDate_(f.date), f.time, p.person, f.to, f.message, 'New', f.id]]);
+  s.getRange(r, 1, 1, 7).setValues([safeRow_([toDate_(f.date), f.time, p.person, f.to, f.message, 'New', f.id])]);
   s.getRange(r, 1).setNumberFormat('yyyy-mm-dd');
   return { ok: true };
 }
@@ -427,10 +504,15 @@ function gAddCols_(s, h, keys) {
   });
   return h;
 }
+// A formula must be sent as {f: '=...'} ("{r}" becomes the row); plain strings starting with = are stored as text.
+// Formulas that reach the web (IMPORT*, IMAGE, HYPERLINK) are refused.
 function gCell_(v, r) {
+  if (v && typeof v === 'object' && typeof v.f === 'string' && v.f.charAt(0) === '=') {
+    if (/IMPORT|IMAGE|HYPERLINK|WEBSERVICE/i.test(v.f)) throw new Error('formula not allowed');
+    return v.f.replace(/\{r\}/g, r);
+  }
   if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) return toDate_(v);
-  if (typeof v === 'string' && v.charAt(0) === '=') return v.replace(/\{r\}/g, r);
-  return v === null || v === undefined ? '' : v;
+  return v === null || v === undefined ? '' : safe_(v);
 }
 function gOut_(v) { return v instanceof Date ? (v.getHours() || v.getMinutes() ? Utilities.formatDate(v, TZ, "yyyy-MM-dd'T'HH:mm") : ymd_(v)) : v; }
 
@@ -456,7 +538,7 @@ function gRead_(p) {
   const s = gSheet_(p.tab); const v = s.getDataRange().getValues(); const h = v.shift().map(String);
   const pi = h.indexOf('Person'), di = h.indexOf('Date');
   let rows = v.filter(r => r.some(x => x !== ''));
-  if (p.person && pi >= 0) rows = rows.filter(r => r[pi] === p.person);
+  if (pi >= 0) rows = rows.filter(r => (String(r[pi]).trim() || 'Josh') === p.person);
   if (p.since && di >= 0) rows = rows.filter(r => ymd_(r[di]) >= p.since);
   if (p.limit) rows = rows.slice(-p.limit);
   return { ok: true, header: h, rows: rows.map(r => Object.fromEntries(h.map((k, i) => [k, gOut_(r[i])]))) };
@@ -465,8 +547,9 @@ function gRead_(p) {
 /** append: {tab, rows:[{Header: value}], headers?: [...] (to create the tab)} ; skips IDs already present */
 function gAppend_(p) {
   const rows = p.rows || []; if (!rows.length) return { ok: true, added: 0 };
-  const s = gSheet_(p.tab, p.headers || Object.keys(rows[0]));
+  const s = gSheet_(p.tab, CREATABLE_TABS.indexOf(p.tab) >= 0 ? (p.headers || Object.keys(rows[0])) : null);
   let h = gAddCols_(s, gHeader_(s), [...new Set(rows.flatMap(Object.keys))]);
+  if (h.indexOf('Person') >= 0) rows.forEach(o => { o.Person = p.person; });   // per-person tab: always the caller
   const ic = gIdCol_(h);
   const have = ic >= 0 && s.getLastRow() > 1 ? new Set(s.getRange(2, ic + 1, s.getLastRow() - 1, 1).getValues().flat().map(String)) : new Set();
   let r = s.getLastRow() + 1, added = 0;
@@ -484,8 +567,9 @@ function gUpdate_(p) {
   const s = gSheet_(p.tab); let h = gHeader_(s); const ic = gIdCol_(h);
   if (ic < 0) throw new Error('tab has no ID column');
   const hit = s.getRange(2, ic + 1, Math.max(s.getLastRow() - 1, 1), 1).createTextFinder(String(p.id)).matchEntireCell(true).findNext();
-  if (!hit) return { ok: false, error: 'not found' };
+  if (!hit || !ownsRow_(s, hit.getRow(), p.person)) return { ok: false, error: 'not found' };
   const r = hit.getRow();
+  if ('Person' in (p.values || {})) return { ok: false, error: 'Person cannot be changed' };
   h = gAddCols_(s, h, Object.keys(p.values || {}));
   Object.entries(p.values || {}).forEach(([k, v]) => s.getRange(r, h.indexOf(k) + 1).setValue(gCell_(v, r)));
   return { ok: true };
@@ -497,6 +581,8 @@ function gUpdateWhere_(p) {
   const s = gSheet_(p.tab); const h = gHeader_(s);
   const m = Object.entries(p.match || {}); if (!m.length) throw new Error('match required');
   const keys = Object.keys(p.values || {}); if (!keys.length) return { ok: true, updated: 0 };
+  // only use today: rename a food on every Log row with its FoodID (both people, by Josh's choice)
+  if (m.length !== 1 || m[0][0] !== 'FoodID' || !String(m[0][1]) || keys.some(k => k !== 'Food')) throw new Error('updateWhere: only {match:{FoodID}, values:{Food}}');
   const n = s.getLastRow() - 1; if (n < 1) return { ok: true, updated: 0 };
   const mc = m.map(([k, v]) => [col_(h, k), String(v)]);
   const cols = {}; mc.forEach(([c]) => { cols[c] = s.getRange(2, c + 1, n, 1).getValues(); });
@@ -515,7 +601,7 @@ function gDelete_(p) {
   const s = gSheet_(p.tab); const ic = gIdCol_(gHeader_(s));
   if (ic < 0) throw new Error('tab has no ID column');
   const hit = s.getRange(2, ic + 1, Math.max(s.getLastRow() - 1, 1), 1).createTextFinder(String(p.id)).matchEntireCell(true).findNext();
-  if (hit) s.deleteRow(hit.getRow());
+  if (hit && ownsRow_(s, hit.getRow(), p.person)) s.deleteRow(hit.getRow());
   return { ok: true };
 }
 

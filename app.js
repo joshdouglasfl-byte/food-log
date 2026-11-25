@@ -28,10 +28,18 @@
   const load = (k, d) => { try { const v = localStorage.getItem(LS(k)); return v ? JSON.parse(v) : d; } catch (e) { return d; } };
   const save = (k, v) => { try { localStorage.setItem(LS(k), JSON.stringify(v)); } catch (e) {} };
 
-  // API key: ?k=... on first visit, then remembered on this device
+  // API key: from the setup link's #k=... (a fragment never leaves the device: not sent to GitHub Pages, not in referrers),
+  // then remembered on this device. Old ?k= links still work once and are rewritten to #k=.
   (() => {
-    const u = new URL(location.href); const k = u.searchParams.get('k');
-    if (k) save('key', k);
+    const u = new URL(location.href);
+    const fromHash = new URLSearchParams(u.hash.slice(1)).get('k'), fromQuery = u.searchParams.get('k');
+    const k = fromHash || fromQuery; if (!k) return;
+    save('key', k);
+    const standalone = navigator.standalone || matchMedia('(display-mode: standalone)').matches;
+    u.searchParams.delete('k');
+    // in Safari keep #k= so Add to Home Screen carries it; on the Home Screen app drop it from the address
+    u.hash = standalone ? '' : 'k=' + encodeURIComponent(k);
+    try { history.replaceState(null, '', u.pathname + u.search + u.hash); } catch (e) {}
   })();
 
   const state = {
@@ -92,9 +100,11 @@
     try {
       await flush();
       const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), 45000);
-      const res = await fetch(`${CFG.API_URL}?action=bootstrap&person=${encodeURIComponent(PERSON)}&key=${encodeURIComponent(load('key', ''))}`, { signal: ctl.signal }); clearTimeout(tm);
+      // POST so the key never sits in a request URL
+      const res = await fetch(CFG.API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'bootstrap', key: load('key', ''), person: PERSON }), signal: ctl.signal }); clearTimeout(tm);
       const j = await res.json();
       if (!j.ok) throw new Error(j.error);
+      if (j.person && j.person !== PERSON) throw new Error(`this page's key belongs to ${j.person}; open ${PERSON}'s own setup link`);
       if (!state.queue.length) {
         const prev = state.data || {};
         // carry over what the background loads add, so a refresh doesn't make screens flicker
@@ -790,11 +800,8 @@
     const last = state.data.exercise.filter(e => e.source === 'Apple Watch').sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.id).localeCompare(String(a.id)))[0];
     return `<section class="card"><h2>⌚️ Apple Watch</h2>
       <div class="sub" style="text-align:left;margin:0">Last watch workout received: ${last ? `${esc(dayLabel(last.date))}, ${esc(last.name)}, ${fmt(last.cal)} cal` : 'none yet'}</div>
-      ${PERSON !== 'Josh' || !last ? `<button class="btn ghost" style="margin-top:10px;width:100%" data-act="haeurl">📋 Copy Health Auto Export URL</button>
-      <div class="sub" style="text-align:left;margin:6px 0 0">Paste it into Health Auto Export on ${PERSON === 'Josh' ? 'your' : `${esc(PERSON)}’s`} iPhone (REST API automation, Workouts, JSON).</div>` : ''}</section>`;
+      <div class="sub" style="text-align:left;margin:6px 0 0">Health Auto Export on ${PERSON === 'Josh' ? 'your' : `${esc(PERSON)}’s`} iPhone uses its own watch-only link (it can’t open the app). Josh gets it when he makes new keys.</div></section>`;
   }
-  // this person's own link: Apps Script can't read headers, so person and key ride in the query
-  const haeUrl = () => `${CFG.API_URL}?source=hae&person=${encodeURIComponent(PERSON)}&key=${encodeURIComponent(load('key', ''))}`;
   async function copyText(t, label) {
     try { await navigator.clipboard.writeText(t); toast(`${label} copied`); }
     catch (e) { window.prompt(`Copy the ${label.toLowerCase()}`, t); }
@@ -1296,8 +1303,15 @@
   function loadZxing() {
     if (window.ZXingWASM) return Promise.resolve(window.ZXingWASM);
     return zxP = zxP || new Promise((ok, bad) => { const sc = document.createElement('script');
-      sc.src = 'https://cdn.jsdelivr.net/npm/zxing-wasm@3.1.7/dist/iife/reader/index.js';
-      sc.onload = () => ok(window.ZXingWASM); sc.onerror = () => { zxP = null; bad(new Error('scanner did not load')); }; document.head.appendChild(sc); });
+      // served from this repo (vendor/), never a CDN: code from another host could read the key and the cached log
+      const base = new URL('../vendor/zxing-wasm-3.1.7/', location.href).href;
+      sc.src = base + 'reader.js';
+      sc.onload = () => {
+        const Z = window.ZXingWASM;
+        try { Z.prepareZXingModule({ overrides: { locateFile: (path, prefix) => path.endsWith('.wasm') ? base + 'zxing_reader.wasm' : prefix + path } }); } catch (e) {}
+        ok(Z);
+      };
+      sc.onerror = () => { zxP = null; bad(new Error('scanner did not load')); }; document.head.appendChild(sc); });
   }
   const bcText = rs => { const r = (rs || []).find(x => x && x.text && x.isValid !== false); return r ? r.text : ''; };
   async function startScan() {
@@ -1551,7 +1565,6 @@
     else if (a === 'news') return openNews();
     else if (a === 'cancelnext') return cancelNextPlan();
     else if (a === 'coachnotes') return openModal({ type: 'coach' });
-    else if (a === 'haeurl') return copyText(haeUrl(), 'Health Auto Export URL');
     else if (a === 'refresh') { toast('Syncing…'); return refresh(true); }
     else if (a === 'done') {
       setDayFlag({ done: true });
