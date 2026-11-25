@@ -147,7 +147,7 @@ Review findings adopted by Josh; same model in Workout Buddy.
 
 ### Rotate keys (also the first-time setup)
 1. Sheet > Extensions > Apps Script > select `newKeys` > Run. View > Logs (Execution log) shows each person's setup link and Health Auto Export URL.
-2. On each device: open that person's setup link in Safari, delete the old Home Screen icon, Share > Add to Home Screen.
+2. On each device: delete the old Home Screen icon, open that person's setup link in Safari, Share > Add to Home Screen, then open the new icon and paste the whole setup link into its box once (iOS 26 'Open as Web App' drops the #fragment from the saved icon, so the icon starts without the key; found 2026-11-24). Get links to devices by Universal Clipboard (own Apple ID) or AirDrop (Michelle), never text/screenshot.
 3. On each iPhone: Health Auto Export > the REST API automation > replace the URL with that person's new HAE URL.
 4. When every device works: Run `dropOldKeys` (keeps each person's newest keys, turns the old shared key off).
 5. The Execution log is visible only to Josh and expires on its own. Never screenshot or text the links.

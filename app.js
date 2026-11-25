@@ -452,7 +452,7 @@
 
   // ---------- rendering ----------
   function render() {
-    if (!state.data) { $('#app').innerHTML = `<div class="wrap" style="padding-top:40px"><div class="card">${state.error ? 'Couldn’t load: ' + esc(state.error) + (state.error === 'unauthorized' ? '<div class="field" style="margin-top:12px"><label>Access key</label><input id="keyin" autocomplete="off" autocapitalize="off"></div><button class="btn big" id="keysave">Save key</button>' : '<br><br><button class="btn" onclick="location.reload()">Try again</button>') : 'Loading your log…'}</div></div>`; const ks = $('#keysave'); if (ks) ks.onclick = () => { save('key', ($('#keyin').value || '').trim()); location.reload(); };
+    if (!state.data) { $('#app').innerHTML = `<div class="wrap" style="padding-top:40px"><div class="card">${state.error ? 'Couldn’t load: ' + esc(state.error) + (state.error === 'unauthorized' ? '<div class="field" style="margin-top:12px"><label>Setup link (or key)</label><input id="keyin" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Paste your whole setup link"></div><button class="btn big" id="keysave">Save key</button>' : '<br><br><button class="btn" onclick="location.reload()">Try again</button>') : 'Loading your log…'}</div></div>`; const ks = $('#keysave'); if (ks) ks.onclick = () => { const v = ($('#keyin').value || '').trim(), m = v.match(/[#?&]k=([^&#\s]+)/); save('key', m ? decodeURIComponent(m[1]) : v); location.reload(); };
       return; }
     const v = state.view;
     $('#app').innerHTML = header() + `<main class="wrap">${v === 'day' ? dayView() : v === 'week' ? weekView() : v === 'prefs' ? prefsView() : v === 'wiz' ? wizView() : settingsView()}</main>` + nav();
