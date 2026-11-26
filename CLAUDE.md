@@ -151,3 +151,4 @@ Review findings adopted by Josh; same model in Workout Buddy.
 3. On each iPhone: Health Auto Export > the REST API automation > replace the URL with that person's new HAE URL.
 4. When every device works: Run `dropOldKeys` (keeps each person's newest keys, turns the old shared key off).
 5. The Execution log is visible only to Josh and expires on its own. Never screenshot or text the links.
+- Fix 2026-11-26 (Josh: ✓ on lunch items flipped back then returned; a deleted breakfast came back): background reads (bootstrap in `refresh()`, `loadPlanned`, `loadExFlags`, `loadCoach`, `loadDayPlans`) could start before a save landed and finish after it, then overwrite the local change. `editGen` now goes up on every `enqueue` and every save that lands; a read whose `editGen` changed while in flight (or with queued changes) is dropped, and `refresh()` retries once after 4s. Test: `tests/test_race.py` (in-page fetch mock with slow reads; the old code fails its delete check).

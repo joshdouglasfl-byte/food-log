@@ -57,7 +57,11 @@
     if (!j.ok) throw new Error(j.error || 'request failed');
     return j;
   }
-  function enqueue(action, body, opt) { state.queue.push({ action, body, qid: uid('q'), ...(opt && opt.optional ? { optional: true } : {}) }); save('queue', state.queue); flush(); }
+  // editGen goes up on every local change and every save that lands. A background read that saw it change while in
+  // flight may hold the sheet as it was before that change, so it is dropped instead of undoing the change on screen.
+  let editGen = 0, staleRetry = null;
+  const readStale = g => g !== editGen || state.queue.length > 0;
+  function enqueue(action, body, opt) { editGen++; state.queue.push({ action, body, qid: uid('q'), ...(opt && opt.optional ? { optional: true } : {}) }); save('queue', state.queue); flush(); }
   async function flush() {
     if (state.syncing || !state.queue.length) return;
     state.syncing = true; renderSync();
@@ -77,7 +81,7 @@
           state.queue.shift(); save('queue', state.queue); continue;
         }
         if (job.action === 'addFood' && j.id && job.body.food.tempId) swapFoodId(job.body.food.tempId, j.id);
-        state.queue.shift(); save('queue', state.queue);
+        state.queue.shift(); save('queue', state.queue); editGen++;
       }
       state.error = '';
     } catch (e) { state.error = String(e.message || e); }
@@ -99,13 +103,16 @@
   async function refresh(manual) {
     try {
       await flush();
+      const gen = editGen;
       const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), 45000);
       // POST so the key never sits in a request URL
       const res = await fetch(CFG.API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'bootstrap', key: load('key', ''), person: PERSON }), signal: ctl.signal }); clearTimeout(tm);
       const j = await res.json();
       if (!j.ok) throw new Error(j.error);
       if (j.person && j.person !== PERSON) throw new Error(`this page's key belongs to ${j.person}; open ${PERSON}'s own setup link`);
-      if (!state.queue.length) {
+      const stale = state.data && readStale(gen);
+      if (stale && !state.queue.length && !staleRetry) staleRetry = setTimeout(() => { staleRetry = null; refresh(); }, 4000);
+      if (!stale && !state.queue.length) {
         const prev = state.data || {};
         // carry over what the background loads add, so a refresh doesn't make screens flicker
         j.servings = prev.servings; j.bodyAll = prev.bodyAll;
@@ -115,7 +122,7 @@
         j.exercise.forEach(e => { const o = exFlags.get(e.id); if (o) { if (o.planned !== undefined) e.planned = o.planned; if (o.est) e.est = true; } });
         j.exLib = prev.exLib; j.dayPlans = prev.dayPlans; j.coach = prev.coach;
         state.data = j; persist(); state.error = ''; syncBudgets();
-      } // don't overwrite unsynced local changes
+      } // don't overwrite unsynced local changes, or ones saved while this read was in flight
       state.error = state.queue.length ? state.error : '';
       if (!state.queue.length) save('lastSync', new Date().toISOString());
       if (!state.modal) bgRender(); else renderSync();
@@ -139,7 +146,9 @@
   // Exercise Planned/Estimate flags live in the Exercise tab; read the last 30 days and later
   async function loadExFlags() {
     try {
+      const gen = editGen;
       const j = await api('read', { tab: 'Exercise', person: PERSON, since: addDays(today(), -30) });
+      if (readStale(gen)) return;
       const by = new Map(j.rows.filter(r => r.EntryID).map(r => [r.EntryID, r]));
       state.data.exercise.forEach(e => { const r = e.id && by.get(e.id); if (!r) return;
         if (r.Planned === 'Yes' || r.Planned === 'No') e.planned = r.Planned === 'Yes';
@@ -158,7 +167,9 @@
   // Planned flags live in the Log tab's Planned column; read today and later via the generic read action
   async function loadPlanned() {
     try {
+      const gen = editGen;
       const j = await api('read', { tab: 'Log', since: today() });
+      if (readStale(gen)) return;
       const flag = new Map(j.rows.filter(r => r.EntryID).map(r => [r.EntryID, r.Planned === 'Yes']));
       state.data.log.forEach(l => { if (l.id && flag.has(l.id)) l.planned = flag.get(l.id); });
       persist(); bgRender();
@@ -167,7 +178,9 @@
   // Notes from the person's dietitian (Coach Notes tab, written by Claude); Status Read once acknowledged
   async function loadCoach() {
     try {
+      const gen = editGen;
       const j = await api('read', { tab: 'Coach Notes', person: PERSON, limit: 30 });
+      if (readStale(gen)) return;
       state.data.coach = j.rows.filter(r => r.EntryID && r.Message).map(r => ({ id: String(r.EntryID), date: String(r.Date).slice(0, 10), time: String(r.Time || ''), from: String(r.From || 'Dietitian'), msg: String(r.Message), read: r.Status === 'Read' }));
       persist(); bgRender();
     } catch (e) {}
@@ -2015,7 +2028,9 @@
   }
   async function loadDayPlans() {
     try {
+      const gen = editGen;
       const j = await api('read', { tab: 'Day Plans', person: PERSON });
+      if (readStale(gen)) return;
       const js = v => { try { const a = JSON.parse(v || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } };
       const rows = j.rows.filter(r => r.PlanID && r.Name).map(r => ({ id: String(r.PlanID), name: String(r.Name), items: js(r['Items (JSON)']), ex: js(r['Exercise (JSON)']),
         cal: Number(r.Calories) || 0, pro: r['Protein (g)'] === '' ? null : Number(r['Protein (g)']) }));

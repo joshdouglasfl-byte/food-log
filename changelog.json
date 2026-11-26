@@ -1,6 +1,13 @@
 {
  "entries": [
   {
+   "date": "2026-11-26",
+   "version": "20261126174607",
+   "items": [
+    "Fixed: tapping ✓ or deleting an entry could briefly undo itself (or bring a deleted item back) while the app was refreshing in the background"
+   ]
+  },
+  {
    "date": "2026-11-24",
    "version": "20261124202000",
    "items": [
